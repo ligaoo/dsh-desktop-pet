@@ -1,0 +1,51 @@
+{
+  "$comment": "Desktop pet configuration. Copy to desktop-pet.config.json and edit. Every key is optional; the values below are the defaults.",
+  "name": "小蓝",
+  "defaults": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash"
+  },
+  "plugins": {
+    "runtime": {
+      "command": "dsh-jsonrpc-agent",
+      "args": [],
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-flash"
+    },
+    "state": {},
+    "bridge": {
+      "sessionId": "desktop-pet"
+    },
+    "memory": {
+      "dir": "data",
+      "personaFile": "persona.md",
+      "memoryFile": "memory.json",
+      "maxHistory": 40,
+      "maxFacts": 100,
+      "maxEpisodes": 100
+    },
+    "window": {
+      "width": 260,
+      "height": 300,
+      "expandedWidth": 340,
+      "expandedHeight": 620,
+      "alwaysOnTop": true,
+      "skipTaskbar": true,
+      "title": "DeepSeek 桌宠",
+      "icon": "renderer/icon.png",
+      "tray": true,
+      "trayIcon": "",
+      "hotkey": "CommandOrControl+Shift+P"
+    },
+    "notifier": {
+      "taskDone": true,
+      "approvals": true,
+      "focusPetOnClick": true,
+      "notifyPort": 17890,
+      "notifyPortFile": ".desktop-pet-notify-port"
+    }
+  },
+  "pluginDirs": [
+    "plugins"
+  ]
+}

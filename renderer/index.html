@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+    <title>DeepSeek 桌宠</title>
+    <link rel="stylesheet" href="./pet.css">
+  </head>
+  <body>
+    <div id="bubble" class="bubble hidden"></div>
+    <div id="status" class="status hidden"></div>
+    <div id="pet" class="pet mood-idle" title="双击展开对话">
+      <!-- Image skin: drop pet.png / pet-<mood>.png into renderer/ to replace
+           the CSS creature — pet.js wires the mood images automatically. -->
+      <img id="pet-img" class="pet-img hidden" alt="pet">
+      <div class="body">
+        <div class="eye left"><div class="pupil"></div></div>
+        <div class="eye right"><div class="pupil"></div></div>
+        <div class="cheek left"></div>
+        <div class="cheek right"></div>
+        <div class="mouth"></div>
+      </div>
+      <div class="shadow"></div>
+    </div>
+    <div id="chat" class="chat hidden">
+      <div class="chat-head">
+        <span>DeepSeek 桌宠</span>
+        <button id="close" class="close" title="收起">×</button>
+      </div>
+      <div id="approval" class="approval hidden">
+        <div class="approval-text"></div>
+        <div class="approval-actions">
+          <button id="approve" class="approval-btn approve" type="button">批准</button>
+          <button id="reject" class="approval-btn reject" type="button">拒绝</button>
+        </div>
+      </div>
+      <div id="log" class="log"></div>
+      <form id="form" class="form">
+        <input id="input" placeholder="和桌宠聊天…" autocomplete="off">
+        <button id="send" type="submit">发送</button>
+      </form>
+    </div>
+    <script type="module" src="./pet.js"></script>
+  </body>
+</html>

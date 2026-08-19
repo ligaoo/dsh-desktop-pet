@@ -1,0 +1,26 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Plugin system (`PetHost` + `definePlugin`) — everything is a plugin.
+- Built-in plugins: `runtime`, `state`, `bridge`, `window`, `notifier`, `identity`, `memory`.
+- Streaming replies (`assistant/chunk` `text-delta` accumulation).
+- Long-term memory: persona, facts, episodic summaries, working history, and memory commands (`记住 / 忘了 / 你记得什么`).
+- Desktop notifications (task done, approvals) with a local HTTP notify endpoint.
+- Harness-host bridge (`harness-host`) for forwarding host approvals/task events to the pet, with optional approval answering.
+- System tray + global hotkey for summoning the pet.
+- Image skins (`pet.png` / per-mood images) with zero-config auto-detection.
+- Auto-injected harness credentials from `~/.dsh/.credentials.yaml`.
+
+### Changed
+- Extracted from `deepseek-harness/packages/extensions/desktop-pet` into a standalone project with vendored SDK artifacts.
+
+## [0.1.0] - 2026-08-19
+
+Initial standalone release.

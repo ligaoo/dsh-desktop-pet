@@ -1,0 +1,26 @@
+# Dependencies & build output
+node_modules/
+lib/
+dist/
+*.tsbuildinfo
+coverage/
+
+# Local state (never committed)
+desktop-pet.config.json
+.sessions/
+data/
+.desktop-pet-notify-port
+*.tmpdir
+
+# Personal pet images (drop your own; the repo ships with the CSS creature)
+renderer/pet.png
+renderer/pet-*.png
+renderer/tray-icon.png
+renderer/icon.png
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+Thumbs.db

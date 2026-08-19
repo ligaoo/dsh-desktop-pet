@@ -1,0 +1,72 @@
+{
+  "name": "desktop-pet",
+  "description": "Standalone DeepSeek Harness desktop pet: a configurable, everything-is-a-plugin Electron pet window that mirrors one agent session's activity, chats with it, and pops desktop notifications for approvals and task completion",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": "desktop-pet contributors",
+  "keywords": [
+    "deepseek",
+    "harness",
+    "desktop-pet",
+    "electron",
+    "agent",
+    "ai-assistant",
+    "plugin",
+    "tray"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "bin": {
+    "desktop-pet": "lib/entries/cli.js",
+    "pet": "lib/entries/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./startup": {
+      "types": "./lib/types/entries/window.d.ts",
+      "default": "./lib/entries/window.js"
+    },
+    "./harness-host": {
+      "types": "./lib/types/entries/harness-host.d.ts",
+      "default": "./lib/entries/harness-host.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "renderer/index.html",
+    "renderer/pet.css",
+    "renderer/pet.js",
+    "renderer/preload.mjs",
+    "vendor",
+    "desktop-pet.config.example.json",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "electron lib/entries/window.js",
+    "pet": "node lib/entries/cli.js",
+    "pet:dev": "tsx src/entries/cli.ts",
+    "sync-vendor": "node scripts/sync-vendor.mjs",
+    "sync-vendor:check": "node scripts/sync-vendor.mjs --check"
+  },
+  "dependencies": {
+    "electron": "^39.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

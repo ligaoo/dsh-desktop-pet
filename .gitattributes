@@ -1,0 +1,4 @@
+# Normalize line endings across platforms for a consistent diff.
+* text=auto eol=lf
+*.png binary
+*.zstd binary
