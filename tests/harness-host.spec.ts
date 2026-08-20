@@ -4,6 +4,8 @@ import {
   buildJumpUrl,
   Config,
   findPendingApprovalId,
+  pushRetryDelayMs,
+  respawnDelayMs,
   resolveChildSpec,
   sessionEventNotify,
 } from '../src/entries/harness-host.ts'
@@ -101,5 +103,21 @@ describe('harness-host notify helpers', () => {
     // onlyRootSessions=false forwards children too.
     expect(sessionEventNotify({ ...config, onlyRootSessions: false }, 'child', false, '', { type: 'approval/asked', data: { toolName: 'bash' } }))
       .toEqual({ title: '需要审批', body: '工具 bash 需要审批', jumpUrl: 'http://localhost:8080/#/session/child' })
+  })
+
+  it('respawnDelayMs backs off from 2s and caps at 30s', () => {
+    expect(respawnDelayMs(1)).toBe(2000)
+    expect(respawnDelayMs(2)).toBe(4000)
+    expect(respawnDelayMs(3)).toBe(8000)
+    expect(respawnDelayMs(4)).toBe(16000)
+    expect(respawnDelayMs(5)).toBe(30000)
+    expect(respawnDelayMs(10)).toBe(30000)
+  })
+
+  it('pushRetryDelayMs backs off 500ms, 1s, 2s across retry attempts', () => {
+    expect(pushRetryDelayMs(1)).toBe(500)
+    expect(pushRetryDelayMs(2)).toBe(1000)
+    expect(pushRetryDelayMs(3)).toBe(2000)
+    expect(pushRetryDelayMs(4)).toBe(4000)
   })
 })

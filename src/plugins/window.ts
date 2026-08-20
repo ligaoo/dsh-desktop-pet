@@ -14,7 +14,7 @@
 
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { definePlugin, EVENTS, SERVICES, type PetSnapshotValue } from '../core/plugin.ts'
+import { definePlugin, EVENTS, SERVICES, type PetSnapshotValue, type PetTodoService } from '../core/plugin.ts'
 import { boolean, number, object, string, type Schema } from '../core/schema.ts'
 
 /** Options for the `window` plugin. */
@@ -45,6 +45,12 @@ export interface WindowPluginOptions {
   trayIcon?: string | undefined
   /** Global shortcut that summons the pet window (default `CommandOrControl+Shift+P`; `''` disables). */
   hotkey?: string | undefined
+  /**
+   * Register the pet to auto-start at Windows login (default false). The
+   * tray menu can toggle this at runtime; the toggle updates the OS login
+   * item (registry) immediately and persists.
+   */
+  autoStart?: boolean | undefined
 }
 
 /** Options schema for the `window` plugin. */
@@ -60,6 +66,7 @@ export const windowConfig: Schema<WindowPluginOptions> = object({
   tray: boolean(true),
   trayIcon: string(),
   hotkey: string('CommandOrControl+Shift+P'),
+  autoStart: boolean(false),
 })
 
 /** Built-in 32x32 tray icon: a soft blue gradient circle. */
@@ -164,6 +171,10 @@ export const windowPlugin = definePlugin<WindowPluginOptions>({
       window.focus()
       window.webContents.send('desktop-pet:expand')
     }
+    // A second launch (shortcut / hotkey / `start-pet.bat`) summons the
+    // running pet instead of stacking another instance: the second process
+    // fails the single-instance lock and quits, and this event fires here.
+    app.on('second-instance', summon)
     const disposeSnapshot = ctx.on('snapshot', (snapshot) => {
       if (!window.isDestroyed()) window.webContents.send('desktop-pet:snapshot', snapshot as PetSnapshotValue)
     })
@@ -180,30 +191,50 @@ export const windowPlugin = definePlugin<WindowPluginOptions>({
       return pet.prompt(text)
     }
     ipcMain.handle('desktop-pet:prompt', handlePrompt)
-    // Drag tracking: the pet moves with the cursor 1:1. The position is
-    // accumulated here in the main process instead of re-reading
-    // window.getPosition() per event — during a fast drag the OS bounds read
-    // can lag the last setPosition, dropping increments and making the window
-    // move slower than the cursor.
-    let dragX = 0
-    let dragY = 0
-    const [initialX = 0, initialY = 0] = window.getPosition()
-    dragX = initialX
-    dragY = initialY
+    // Drag: the renderer sends ABSOLUTE target positions, so there is no
+    // accumulated position to go stale when the OS clamps the window (e.g. a
+    // screen edge while the tall chat panel is open) or when the resize on
+    // expand/collapse nudges the window.
+    //
+    // Coalescing: the renderer already throttles to one message per frame,
+    // but a burst can still arrive here faster than the OS can move the
+    // window. Only the NEWEST target is kept and applied once per tick, so
+    // the window jumps straight to the latest position instead of replaying
+    // a backlog of stale moves (which is what made it trail the cursor and
+    // "catch up" only when the drag ended).
+    let pendingDrag: [number, number] | null = null
+    let dragImmediate: ReturnType<typeof setImmediate> | null = null
+    const onDragTo = (_event: unknown, x: unknown, y: unknown): void => {
+      if (typeof x !== 'number' || typeof y !== 'number' || window.isDestroyed()) return
+      pendingDrag = [Math.round(x), Math.round(y)]
+      if (dragImmediate !== null) return
+      dragImmediate = setImmediate(() => {
+        dragImmediate = null
+        const target = pendingDrag
+        pendingDrag = null
+        if (target !== null && !window.isDestroyed()) window.setPosition(target[0], target[1])
+      })
+    }
+    ipcMain.on('desktop-pet:drag-to', onDragTo)
+    // Absolute reposition, used by the renderer to re-anchor the pet after
+    // the expand/collapse resize (the pet must stay put on screen).
+    const onMoveTo = (_event: unknown, x: unknown, y: unknown): void => {
+      if (typeof x !== 'number' || typeof y !== 'number' || window.isDestroyed()) return
+      window.setPosition(Math.round(x), Math.round(y))
+    }
+    ipcMain.on('desktop-pet:move-to', onMoveTo)
     ipcMain.handle('desktop-pet:set-expanded', (_event: unknown, expanded: unknown) => {
       if (typeof expanded !== 'boolean' || window.isDestroyed()) return
-      window.setSize(expanded ? (options.expandedWidth ?? 340) : (options.width ?? 260), expanded ? (options.expandedHeight ?? 620) : (options.height ?? 300))
-      // setSize may nudge the window (e.g. near a screen edge); re-sync the
-      // drag origin so subsequent drags stay 1:1.
-      const [px = 0, py = 0] = window.getPosition()
-      dragX = px
-      dragY = py
-    })
-    ipcMain.handle('desktop-pet:drag-by', (_event: unknown, dx: unknown, dy: unknown) => {
-      if (typeof dx !== 'number' || typeof dy !== 'number' || window.isDestroyed()) return
-      dragX += dx
-      dragY += dy
-      window.setPosition(dragX, dragY)
+      // setBounds with an explicit x/y keeps the window exactly where it is
+      // instead of letting a bare setSize nudge it (near a screen edge the OS
+      // may move the window, which used to desync the drag baseline).
+      const [x = 0, y = 0] = window.getPosition()
+      window.setBounds({
+        x,
+        y,
+        width: expanded ? (options.expandedWidth ?? 340) : (options.width ?? 260),
+        height: expanded ? (options.expandedHeight ?? 620) : (options.height ?? 300),
+      })
     })
     ipcMain.handle('desktop-pet:approval-respond', (_event: unknown, requestId: unknown, outcome: unknown) => {
       if (typeof requestId !== 'string' || (outcome !== 'allowed-once' && outcome !== 'rejected')) return
@@ -214,11 +245,78 @@ export const windowPlugin = definePlugin<WindowPluginOptions>({
       app.quit()
     })
 
+    // --- Todo panel IPC (only when the `todo` plugin is active). The panel
+    // reads the list on demand and stays in sync via `todo:changed` pushes,
+    // so chat commands ("记个待办：X") and the panel always agree.
+    const todo = ctx.get<PetTodoService>(SERVICES.todo)
+    const disposeTodoListen = todo?.listen((items) => {
+      if (!window.isDestroyed()) window.webContents.send('desktop-pet:todo-updated', items)
+    })
+    if (todo !== undefined) {
+      ipcMain.handle('desktop-pet:todo-list', () => todo.list())
+      ipcMain.handle('desktop-pet:todo-add', (_event, text: unknown) => {
+        if (typeof text !== 'string') return Promise.reject(new Error('desktop-pet:todo-add expects the todo text as a string'))
+        return todo.add(text)
+      })
+      ipcMain.handle('desktop-pet:todo-toggle', (_event, id: unknown) => {
+        if (typeof id !== 'string') return Promise.reject(new Error('desktop-pet:todo-toggle expects a todo id'))
+        return todo.toggle(id)
+      })
+      ipcMain.handle('desktop-pet:todo-remove', (_event, id: unknown) => {
+        if (typeof id !== 'string') return Promise.reject(new Error('desktop-pet:todo-remove expects a todo id'))
+        return todo.remove(id)
+      })
+    }
+
     await window.loadFile(resolveAsset('renderer/index.html'))
 
     // --- System tray + global shortcut: summon the pet from anywhere.
     const { Tray, Menu, globalShortcut, nativeImage } = await import('electron')
+
+    // --- Auto-start at Windows login. The OS login item (registry) is the
+    // source of truth at runtime; the `autoStart` config option only ever
+    // *ensures* it is on (idempotent), and the tray checkbox can toggle it
+    // off (which persists). Registry Run entries start the pet with an
+    // arbitrary working directory, so the window entry re-locates the config
+    // next to itself and relative paths resolve against the config file.
+    const windowEntryPath = fileURLToPath(new URL('../../lib/entries/window.js', import.meta.url))
+    const loginItemAvailable = existsSync(windowEntryPath)
     let tray: import('electron').Tray | undefined
+    const refreshMenu = (): void => {
+      const current = tray
+      if (current === undefined) return
+      current.setContextMenu(Menu.buildFromTemplate([
+        { label: '显示桌宠', click: summon },
+        { type: 'separator' },
+        ...(loginItemAvailable
+          ? [{ label: '开机自启', type: 'checkbox' as const, checked: autoStart, click: () => applyLoginItem(!autoStart) }]
+          : []),
+        { type: 'separator' },
+        { label: '退出', click: () => app.quit() },
+      ]))
+    }
+    let autoStart = false
+    const applyLoginItem = (value: boolean): void => {
+      if (!loginItemAvailable) return
+      autoStart = value
+      app.setLoginItemSettings({ openAtLogin: value, path: process.execPath, args: [windowEntryPath] })
+      refreshMenu()
+    }
+    try {
+      // Electron 39: for unpackaged apps the flat `openAtLogin` is unreliable;
+      // `executableWillLaunchAtLogin` reflects the actual Run-entry state.
+      autoStart = app.getLoginItemSettings().executableWillLaunchAtLogin === true
+    } catch (error) {
+      ctx.logger.warn('could not read the login item setting: %s', error instanceof Error ? error.message : String(error))
+    }
+    if (options.autoStart === true && !autoStart) {
+      if (!loginItemAvailable) {
+        ctx.logger.warn('auto-start requested but the window entry is not built at %s (run `npm run build`)', windowEntryPath)
+      } else {
+        app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: [windowEntryPath] })
+        autoStart = true
+      }
+    }
     if (options.tray !== false) {
       const trayIconPath = options.trayIcon !== undefined && options.trayIcon !== ''
         ? (existsSync(fileURLToPath(new URL(`../../${options.trayIcon}`, import.meta.url))) ? fileURLToPath(new URL(`../../${options.trayIcon}`, import.meta.url)) : undefined)
@@ -227,11 +325,7 @@ export const windowPlugin = definePlugin<WindowPluginOptions>({
       tray = new Tray(icon)
       tray.setToolTip(`${identityName} — 单击唤起，右键菜单`)
       tray.on('click', summon)
-      tray.setContextMenu(Menu.buildFromTemplate([
-        { label: '显示桌宠', click: summon },
-        { type: 'separator' },
-        { label: '退出', click: () => app.quit() },
-      ]))
+      refreshMenu()
     }
     const hotkey = options.hotkey ?? ''
     if (hotkey !== '') {
@@ -245,14 +339,24 @@ export const windowPlugin = definePlugin<WindowPluginOptions>({
       disposeSnapshot()
       disposeFocus()
       disposeApproval()
+      disposeTodoListen?.()
+      app.removeListener('second-instance', summon)
       tray?.destroy()
       if (hotkey !== '') globalShortcut.unregister(hotkey)
+      if (dragImmediate !== null) clearImmediate(dragImmediate)
       ipcMain.removeHandler('desktop-pet:prompt')
       ipcMain.removeHandler('desktop-pet:set-expanded')
-      ipcMain.removeHandler('desktop-pet:drag-by')
+      ipcMain.removeListener('desktop-pet:drag-to', onDragTo)
+      ipcMain.removeListener('desktop-pet:move-to', onMoveTo)
       ipcMain.removeHandler('desktop-pet:approval-respond')
       ipcMain.removeHandler('desktop-pet:get-name')
       ipcMain.removeHandler('desktop-pet:quit')
+      if (todo !== undefined) {
+        ipcMain.removeHandler('desktop-pet:todo-list')
+        ipcMain.removeHandler('desktop-pet:todo-add')
+        ipcMain.removeHandler('desktop-pet:todo-toggle')
+        ipcMain.removeHandler('desktop-pet:todo-remove')
+      }
       app.removeListener('will-quit', onWillQuit)
       if (!window.isDestroyed()) window.destroy()
     }

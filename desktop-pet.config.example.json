@@ -24,6 +24,12 @@
       "maxFacts": 100,
       "maxEpisodes": 100
     },
+    "todo": {
+      "dir": "data",
+      "file": "todos.json",
+      "maxItems": 200,
+      "autoRecord": true
+    },
     "window": {
       "width": 260,
       "height": 300,
@@ -35,7 +41,8 @@
       "icon": "renderer/icon.png",
       "tray": true,
       "trayIcon": "",
-      "hotkey": "CommandOrControl+Shift+P"
+      "hotkey": "CommandOrControl+Shift+P",
+      "autoStart": false
     },
     "notifier": {
       "taskDone": true,

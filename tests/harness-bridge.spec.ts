@@ -173,4 +173,44 @@ describe('harness-host bridge', () => {
       await pet.close()
     }
   })
+
+  it('retries a push while the pet endpoint is briefly down (pet restart)', async () => {
+    // The "pet" drops the first two connections (notifier port not yet
+    // rebound mid-restart), then accepts — the push must land after retries.
+    let hits = 0
+    const received: Array<Record<string, unknown>> = []
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      hits += 1
+      if (hits <= 2) {
+        req.socket.destroy()
+        return
+      }
+      void readJson(req).then((payload) => {
+        received.push(typeof payload === 'object' && payload !== null ? payload as Record<string, unknown> : {})
+        res.writeHead(200)
+        res.end('{"ok":true}')
+      })
+    })
+    await new Promise<void>((resolveListen, rejectListen) => {
+      server.once('error', rejectListen)
+      server.listen(0, '127.0.0.1', resolveListen)
+    })
+    const address = server.address()
+    const port = typeof address === 'object' && address !== null ? address.port : 0
+
+    const { ctx, handlers } = fakeCtx()
+    const teardown = bridgeHost(ctx, { notifyUrl: `http://127.0.0.1:${port}` })
+    try {
+      handlers.get('session/event')![0]!.call(null,
+        { header: { id: 's1', parentSession: null } },
+        { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+      )
+      await waitFor(() => received.length > 0, 5000)
+      expect(hits).toBeGreaterThanOrEqual(3)
+      expect(received[0]!.title).toBe('任务完成')
+    } finally {
+      teardown()
+      await new Promise<void>((resolveClose) => server.close(() => resolveClose()))
+    }
+  })
 })

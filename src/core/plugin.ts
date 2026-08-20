@@ -149,6 +149,8 @@ export const EVENTS = {
   approvalShown: 'approval:shown',
   /** Emitted with the user's approval decision (window → notifier → host). */
   approvalRespond: 'approval:respond',
+  /** Emitted with the full todo list after any todo mutation (todo plugin). */
+  todoChanged: 'todo:changed',
 } as const
 
 /** Service keys published by the built-in plugins. */
@@ -165,6 +167,8 @@ export const SERVICES = {
   identity: 'identity',
   /** The pet's long-term memory and persona ({@link PetMemoryService}) — published by the `memory` plugin. */
   memory: 'memory',
+  /** The pet's todo list ({@link PetTodoService}) — published by the `todo` plugin. */
+  todo: 'todo',
 } as const
 
 /** The window surface the `window` plugin publishes (for focus-aware plugins). */
@@ -207,6 +211,49 @@ export interface PetMemoryService {
   overflowCount(): number
   /** Remove and return the oldest `count` messages (for consolidation). */
   drainHistory(count: number): Array<{ role: 'user' | 'assistant'; text: string }>
+}
+
+/** One todo entry. */
+export interface TodoItem {
+  /** Stable unique id (also used by the panel's toggle/remove IPC). */
+  id: string
+  /** The todo text. */
+  text: string
+  /** Whether the todo is completed. */
+  done: boolean
+  /** Creation timestamp (ms). */
+  createdAt: number
+  /** Completion timestamp (ms); null while open. */
+  completedAt: number | null
+}
+
+/** The pet's todo list, published by the `todo` plugin. */
+export interface PetTodoService {
+  /** Whether casual conversation is auto-recorded as todos (`todo.autoRecord`). */
+  readonly autoRecord: boolean
+  /** All todos, most recently added first. */
+  list(): TodoItem[]
+  /**
+   * Add a todo (deduplicated against open items with the same text).
+   * @returns the new (or existing) item.
+   */
+  add(text: string): TodoItem
+  /** Toggle one todo by its exact id; returns the updated item, or undefined when not found. */
+  toggle(id: string): TodoItem | undefined
+  /** Complete every open todo whose id or text matches; returns how many were completed. */
+  complete(match: string): number
+  /** Re-open every done todo whose id or text matches; returns how many were re-opened. */
+  uncomplete(match: string): number
+  /** Remove every todo whose id or text matches; returns how many were removed. */
+  remove(match: string): number
+  /** Remove all todos (open and done); returns how many were removed. */
+  clear(): number
+  /** Number of open (not done) todos. */
+  openCount(): number
+  /** Human-readable numbered list for chat injection; empty string when there are no todos. */
+  listText(): string
+  /** Subscribe to list changes; the listener receives the full list. Returns the disposer. */
+  listen(listener: (items: TodoItem[]) => void): () => void
 }
 
 /** The chat surface exposed by the `bridge` plugin. */

@@ -145,12 +145,61 @@ window.desktopPet.getName().then((name) => {
 }).catch(() => {})
 
 let expanded = false
+let anchorCleanup = null
 
-/** Expand or collapse the chat panel (and the window with it). */
+/** The pet's layout bottom edge, window-relative (offset* ignores transforms). */
+function petBottom() {
+  return pet.offsetTop + pet.offsetHeight
+}
+
+/** The pet's layout horizontal center, window-relative. */
+function petCenterX() {
+  return pet.offsetLeft + pet.offsetWidth / 2
+}
+
+/**
+ * Re-anchor the pet to a pre-toggle screen position after the window resize
+ * lands. The pet is bottom-aligned and horizontally centered, so growing the
+ * window (the chat panel appears below the pet, and the window gets wider)
+ * would make it jump; a measured correction also absorbs the OS clamping a
+ * window that would grow past a screen edge. Rapid toggles cancel the
+ * previous pending correction.
+ */
+function reanchor(keepX, keepY) {
+  if (anchorCleanup !== null) {
+    clearTimeout(anchorCleanup.timer)
+    window.removeEventListener('resize', anchorCleanup.onResize)
+  }
+  let corrected = false
+  const correct = () => {
+    if (corrected) return
+    corrected = true
+    if (anchorCleanup !== null) {
+      clearTimeout(anchorCleanup.timer)
+      window.removeEventListener('resize', anchorCleanup.onResize)
+      anchorCleanup = null
+    }
+    // Wait one frame so the new layout is final before moving the window.
+    requestAnimationFrame(() => {
+      window.desktopPet.moveTo(Math.round(keepX - petCenterX()), Math.round(keepY - petBottom()))
+    })
+  }
+  const onResize = () => correct()
+  anchorCleanup = { timer: setTimeout(correct, 400), onResize }
+  window.addEventListener('resize', onResize)
+}
+
+/**
+ * Expand or collapse the chat panel (and the window with it), keeping the
+ * pet glued to its current screen position.
+ */
 function setExpanded(next) {
   expanded = next
   chat.classList.toggle('hidden', !expanded)
+  const keepX = window.screenX + petCenterX()
+  const keepY = window.screenY + petBottom()
   window.desktopPet.setExpanded(expanded)
+  reanchor(keepX, keepY)
   if (expanded) input.focus()
 }
 
@@ -191,17 +240,45 @@ rejectButton.addEventListener('click', () => respondApproval('rejected'))
 // receive clicks; movement is applied in the main process.
 // - pointerdown captures the pointer, so pointermove/pointerup keep firing
 //   even when the cursor races outside the window during a fast drag;
-// - move/up also listen on `window`, so the drag still works if capture is
-//   unavailable (best-effort);
-// - `event.buttons` ends a drag whose button was released outside the window.
+// - the grab point is fixed relative to the window at pointerdown, and every
+//   pointermove computes the ABSOLUTE target position
+//   (screenX - grabOffsetX, screenY - grabOffsetY). Absolute positioning
+//   instead of accumulated deltas keeps the drag 1:1 with the cursor even
+//   when display scaling, an OS edge clamp, or the resize that happens when
+//   the chat panel expands/collapses has moved the window: there is no stale
+//   baseline to drift from, and any scale mismatch cancels out because the
+//   grab offset and the cursor share the same coordinate units;
+// - moves are COALESCED: pointermove can fire far faster than the window can
+//   follow (and faster than IPC can deliver), so only the newest position is
+//   kept and sent at most once per animation frame. Intermediate positions
+//   are dropped — with absolute coordinates that is safe, the last one wins,
+//   and the window never plays catch-up behind a backlog;
+// - `event.buttons` ends a drag whose button was released outside the window;
+// - `lostpointercapture` covers Windows dropping the capture while the window
+//   moves under the pointer during a fast drag.
 let dragging = false
-let dragStartX = 0
-let dragStartY = 0
+let grabOffsetX = 0
+let grabOffsetY = 0
+let pendingDragX = null
+let pendingDragY = null
+let dragFrame = null
+
+/** Send the newest pending target (if any) to the main process. */
+function flushDrag() {
+  dragFrame = null
+  if (pendingDragX === null || pendingDragY === null) return
+  const x = pendingDragX
+  const y = pendingDragY
+  pendingDragX = null
+  pendingDragY = null
+  window.desktopPet.dragTo(x, y)
+}
+
 pet.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return
   dragging = true
-  dragStartX = event.screenX
-  dragStartY = event.screenY
+  grabOffsetX = event.screenX - window.screenX
+  grabOffsetY = event.screenY - window.screenY
   try {
     pet.setPointerCapture(event.pointerId)
   } catch {
@@ -212,21 +289,28 @@ window.addEventListener('pointermove', (event) => {
   if (!dragging) return
   // Button no longer held (released outside the window): end the drag.
   if ((event.buttons & 1) === 0) {
-    dragging = false
+    endDrag()
     return
   }
-  const dx = event.screenX - dragStartX
-  const dy = event.screenY - dragStartY
-  if (dx === 0 && dy === 0) return
-  dragStartX = event.screenX
-  dragStartY = event.screenY
-  window.desktopPet.dragBy(dx, dy)
+  pendingDragX = event.screenX - grabOffsetX
+  pendingDragY = event.screenY - grabOffsetY
+  if (dragFrame === null) {
+    dragFrame = requestAnimationFrame(flushDrag)
+  }
 })
 const endDrag = () => {
   dragging = false
+  if (dragFrame !== null) {
+    cancelAnimationFrame(dragFrame)
+    dragFrame = null
+  }
+  // Deliver the final pending position so the window lands exactly under
+  // the cursor (covers a rAF that never fired before the drag ended).
+  flushDrag()
 }
 window.addEventListener('pointerup', endDrag)
 window.addEventListener('pointercancel', endDrag)
+window.addEventListener('lostpointercapture', endDrag)
 window.addEventListener('blur', endDrag)
 
 /** Append one message row to the chat log. */
@@ -261,4 +345,72 @@ form.addEventListener('submit', (event) => {
       sendButton.disabled = false
       input.focus()
     })
+})
+
+// ---------- todo panel ----------
+const todoToggle = document.getElementById('todo-toggle')
+const todoPanel = document.getElementById('todo')
+const todoList = document.getElementById('todo-list')
+const todoEmpty = document.getElementById('todo-empty')
+const todoForm = document.getElementById('todo-form')
+const todoInput = document.getElementById('todo-input')
+let todoPanelActive = false
+
+/** Render the todo list; the button badge shows the number of open items. */
+function renderTodos(items) {
+  todoList.textContent = ''
+  for (const item of items) {
+    const row = document.createElement('div')
+    row.className = `todo-item${item.done ? ' done' : ''}`
+    const checkbox = document.createElement('button')
+    checkbox.type = 'button'
+    checkbox.className = 'todo-check'
+    checkbox.textContent = item.done ? '✓' : ''
+    checkbox.title = item.done ? '标记为未完成' : '标记为完成'
+    checkbox.addEventListener('click', () => {
+      window.desktopPet.todo.toggle(item.id).catch(() => {})
+    })
+    const label = document.createElement('span')
+    label.className = 'todo-text'
+    label.textContent = item.text
+    label.title = item.text
+    const del = document.createElement('button')
+    del.type = 'button'
+    del.className = 'todo-del'
+    del.textContent = '×'
+    del.title = '删除这条待办'
+    del.addEventListener('click', () => {
+      window.desktopPet.todo.remove(item.id).catch(() => {})
+    })
+    row.append(checkbox, label, del)
+    todoList.append(row)
+  }
+  todoEmpty.classList.toggle('hidden', items.length > 0)
+  const open = items.filter((item) => !item.done).length
+  todoToggle.textContent = open > 0 ? `待办(${open})` : '待办'
+  todoToggle.classList.toggle('active', todoPanelActive && open > 0)
+}
+
+// Live sync: chat commands ("记个待办：X") update the panel too.
+window.desktopPet.todo.onChanged(renderTodos)
+// The todo plugin may be disabled; then the IPC handlers do not exist.
+window.desktopPet.todo.list().then(renderTodos).catch(() => {
+  todoToggle.classList.add('hidden')
+})
+
+todoToggle.addEventListener('click', () => {
+  todoPanelActive = !todoPanelActive
+  todoPanel.classList.toggle('hidden', !todoPanelActive)
+  log.classList.toggle('hidden', todoPanelActive)
+  form.classList.toggle('hidden', todoPanelActive)
+  todoToggle.classList.toggle('active', todoPanelActive)
+  if (todoPanelActive) todoInput.focus()
+})
+
+todoForm.addEventListener('submit', (event) => {
+  event.preventDefault()
+  const text = todoInput.value.trim()
+  if (text === '') return
+  todoInput.value = ''
+  window.desktopPet.todo.add(text).catch(() => {})
 })

@@ -25,7 +25,10 @@
     <div id="chat" class="chat hidden">
       <div class="chat-head">
         <span>DeepSeek 桌宠</span>
-        <button id="close" class="close" title="收起">×</button>
+        <div class="head-actions">
+          <button id="todo-toggle" class="head-btn" type="button" title="待办清单">待办</button>
+          <button id="close" class="close" title="收起">×</button>
+        </div>
       </div>
       <div id="approval" class="approval hidden">
         <div class="approval-text"></div>
@@ -33,6 +36,14 @@
           <button id="approve" class="approval-btn approve" type="button">批准</button>
           <button id="reject" class="approval-btn reject" type="button">拒绝</button>
         </div>
+      </div>
+      <div id="todo" class="todo hidden">
+        <div id="todo-list" class="todo-list"></div>
+        <div id="todo-empty" class="todo-empty hidden">还没有待办。对宠物说「记个待办：xxx」，或在这里添加。</div>
+        <form id="todo-form" class="todo-form">
+          <input id="todo-input" placeholder="记一条待办…" autocomplete="off">
+          <button type="submit">添加</button>
+        </form>
       </div>
       <div id="log" class="log"></div>
       <form id="form" class="form">

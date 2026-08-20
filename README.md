@@ -5,7 +5,7 @@
 本项目由 deepseek-harness 仓库中的 `packages/extensions/desktop-pet` 独立出来：
 
 - 不再依赖 monorepo：SDK 客户端（`@deepseek-ai/dsh-sdk-client`）的构建产物被 vendor 进 `vendor/`（见 [vendor/README.md](vendor/README.md)），`npm install` 只拉取 `electron`；
-- 原来"包根即 Cordis 插件"的耦合被拆成一套自研的轻量插件系统（约 200 行的 `PetHost` + `definePlugin`），内置 `runtime`/`state`/`bridge`/`window`/`notifier`/`identity`/`memory` 七个插件，外部插件可从 `plugins/` 目录或配置文件自动发现；
+- 原来"包根即 Cordis 插件"的耦合被拆成一套自研的轻量插件系统（约 200 行的 `PetHost` + `definePlugin`），内置 `runtime`/`state`/`bridge`/`window`/`notifier`/`identity`/`memory`/`todo` 八个插件，外部插件可从 `plugins/` 目录或配置文件自动发现；
 - 保留两条接入 DSH 的路径：独立运行（SDK 客户端驱动自己的 runtime 子进程）与挂载进 harness 宿主（`harness-host` 入口，作为 cordis.yml 行被加载）。
 
 ## 目录结构
@@ -13,7 +13,7 @@
 ```
 src/
   core/       插件系统：host / plugin / schema / config / loader / credentials，以及 Electron 无关的宠物核心（state / bridge / launch）
-  plugins/    内置插件：runtime / state / bridge / window / notifier / identity / memory
+  plugins/    内置插件：runtime / state / bridge / window / notifier / identity / memory / todo
   entries/    CLI 入口、Electron 主进程入口、harness-host 挂载入口
   sdk.ts      唯一访问 vendored SDK 的门面
 renderer/     窗口渲染层（纯 CSS 宠物 + 聊天面板 + 图片皮肤）
@@ -41,9 +41,13 @@ DEEPSEEK_API_KEY=… npm run pet        # 等价：node lib/entries/cli.js
 
 窗口默认以 `dsh-jsonrpc-agent` 为 runtime（需在 PATH 上，或通过配置/环境变量指定）。宠物本体可拖动，双击开合聊天面板，面板右上角 × **收起**面板（桌宠继续运行）；退出走托盘右键菜单。所有对话共享同一个会话 id（`desktop-pet`），窗口内上下文持续保留。
 
+开合聊天面板时**宠物会原地不动**：面板在宠物下方展开，窗口自动伸缩并把宠物保持在原屏幕位置（贴近屏幕边缘导致系统把窗口弹回时也会自动校正）。
+
 **随时唤起桌宠**：
-- **系统托盘**（右下角时钟旁）：单击蓝色圆点图标 = 唤起桌宠并展开聊天；右键菜单：显示桌宠 / 退出（`window.tray: false` 关闭）；
+- **系统托盘**（右下角时钟旁）：单击蓝色圆点图标 = 唤起桌宠并展开聊天；右键菜单：显示桌宠 / **开机自启**（勾选后随 Windows 登录自动运行）/ 退出（`window.tray: false` 关闭）；
 - **全局快捷键**：`Ctrl+Shift+P` 随时唤起（`window.hotkey` 可改，空字符串关闭）；
+- **开机自启（免 .bat）**：托盘勾选「开机自启」，或配置 `{ "plugins": { "window": { "autoStart": true } } }` —— 登录后桌宠自动运行，之后 `Ctrl+Shift+P` 随时可用，再也不用每次双击 `start-pet.bat`；
+- **重复启动 = 唤起**：无论桌宠是否在运行，再次启动（双击快捷方式、按快捷方式绑定的热键、双击 `start-pet.bat`）都会把已运行的桌宠窗口带到前台，不会开重复实例；没在运行时则直接启动它；
 - 没在运行时：双击 `start-pet.bat`（或 `npm start`）；一键重启用 `restart-pet.bat`。
 
 **回复是流式的**：`assistant/chunk` 的 `text-delta` 片段会被实时累积进气泡（`core/bridge.ts`），逐字显示，而不是等整轮结束。回复期间宠物只切换表情动画，不再在头顶显示工具名。每次宠物启动使用独立的会话存储（`DSH_SESSION_ROOT=<cwd>/.sessions/<pid>`），避免与上次启动的持久化日志冲突。
@@ -81,6 +85,59 @@ DEEPSEEK_API_KEY=… npm run pet        # 等价：node lib/entries/cli.js
 ```jsonc
 { "plugins": { "memory": { "dir": "data", "maxHistory": 40, "maxFacts": 100, "maxEpisodes": 100 } } }
 ```
+
+### 待办清单（记录待办 / 查看待办）
+
+`todo` 插件让宠物帮你记待办，数据存在 `data/todos.json`（已 gitignore），跨重启保留：
+
+- **聊天即可**（直接对宠物说，它会在面板里同步更新）：
+
+| 你说 | 效果 |
+|---|---|
+| 「记个待办：下午3点开会」 | 新增一条待办（也支持"记录待办：…"/"添加待办：…"/"加个待办：…"） |
+| 「查看待办」 | 让它把当前待办念给你听（也支持"待办列表"/"我的待办"/"还有什么待办"） |
+| 「完成待办：开会」 | 按关键词完成对应待办（也支持"搞定待办：…"/"划掉待办：…"） |
+| 「恢复待办：开会」 | 把已完成的待办重新打开 |
+| 「删除待办：开会」 | 按关键词删除待办（也支持"移除待办：…"） |
+| 「清空待办」 | 清空全部待办 |
+
+- **内置面板**：展开聊天面板后点右上角「待办」按钮，即可看到清单（未完成在前、已完成划线置后），支持勾选完成 / 取消勾选 / 删除 / 上方直接添加；按钮上的数字是未完成条数。面板与聊天命令实时双向同步——你告诉宠物"记个待办"时面板立刻多一条，反之亦然。
+
+**闲聊也会自动记（规则启发式）**：默认开启（`todo.autoRecord`），宠物会从普通对话里识别"计划/提醒"句式并自动记入待办，例如：
+
+| 你说 | 效果 |
+|---|---|
+| 「我明天要交周报」 | 自动记「交周报」 |
+| 「别忘了给妈妈打电话」 | 自动记「给妈妈打电话」 |
+| 「明天得去银行」 / 「该写周报了」 | 自动记「去银行」 / 「写周报」 |
+
+它**不会**把以下内容记成待办：提问句（"你明天要做什么？"）、对宠物的请求（"帮我查天气"）、记忆指令（"记住：…"）、回忆查询（"你记得什么"）、以及回忆往事（"我记得你上次说…"）。规则偏宽松，闲聊偶有误记属预期；`todo.add` 会按文字去重，重复句子不会重复记录。不想要自动记录时：
+
+```jsonc
+{ "plugins": { "todo": { "dir": "data", "file": "todos.json", "maxItems": 200, "autoRecord": false } } }
+```
+
+**批量待办列表（走大模型提取）**：当一条消息里带**多条**待办（≥ 2 个编号项，如 `1、… 2、… 3、…`，或"待办：买菜、拖地、倒垃圾"这种顿号分隔列表），宠物会先用一个**独立会话**让模型把每条待办提取出来，再**逐条加入**待办清单，并回复你一共记了几条。例如：
+
+```
+帮我记录一下 下面几个代办1、token消耗 2、生图、米塔api 3、案例上传大小的问题
+4、技能库、技能审核后台 5. 技能跟素材上传的端（小程序需求）
+```
+
+会记成 5 条独立待办（而不是一整条"下面几个代办"）。以下写法都能识别：
+
+- **"帮我/请帮我"前缀 + 待办词**：`帮我记录一下下面几个待办…`、`帮我记一下 1、x 2、y`（提到待办/记录/清单等词时，"帮我"前缀不再被当作"对宠物的请求"拦掉）；
+- **待办词在"下面/以下"后面**：`下面几个待办：买菜、拖地`、`以下待办：1、x 2、y`；
+- **编号紧跟待办词/冒号**：`待办1、买菜 2、拖地`、`待办：1、x 2、y`（第一条不丢）；
+- 编号支持 `1、` `2.` `3）` `①` `一、` 等；顿号列表需 ≥ 2 项。
+
+提取走本地模型会话（与记忆整理的机制相同），失败时会记日志并跳过，不影响正常对话。
+
+```jsonc
+{ "plugins": { "todo": { "dir": "data", "file": "todos.json", "maxItems": 200 } } }
+```
+
+> 命令在 `bridge` 插件里按正则拦截处理（与记忆指令同一套机制），消息本身仍会发给模型，所以宠物会用自然语言确认你刚才的操作。
 
 ## 配置
 
@@ -168,11 +225,14 @@ ctx.host.dispose()                                  // 请求整机退出（wind
 |---|---|---|---|
 | `runtime` | — | `harness` | 解析 launch（env/config），拥有 `DeepSeekHarness` 子进程，懒启动 |
 | `state` | — | `state` | 快照唯一真源：纯 reducer 折叠通知，变更时发 `state:changed` |
-| `bridge` | `runtime` | `pet` | 会话串行化 + 快照折叠（包装 `DesktopPetBridge` 核心），变更时发 `snapshot`、`turn:done`、`approval:asked` |
-| `window` | `bridge` | — | Electron 窗口 + IPC（含审批卡片）+ 退出流程绑定 host 拆卸 |
+| `bridge` | `runtime` | `pet` | 会话串行化 + 快照折叠（包装 `DesktopPetBridge` 核心），变更时发 `snapshot`、`turn:done`、`approval:asked`；拦截记忆/待办指令 |
+| `window` | `bridge` | — | Electron 窗口 + IPC（含审批卡片、待办面板）+ 退出流程绑定 host 拆卸 |
 | `notifier` | — | — | 桌面通知 + 审批卡片：任务完成/审批请求弹通知，点击聚焦宠物或跳转 URL；本地 HTTP 通知/审批口 |
+| `identity` | — | `identity` | 宠物名字（窗口标题/聊天头部/托盘/首条消息身份注入） |
+| `memory` | — | `memory` | 长期记忆：facts / episodes / history + 人设（`data/persona.md`、`data/memory.json`） |
+| `todo` | — | `todo` | 待办清单（`data/todos.json`）：记录/查看/完成/删除，变更时发 `todo:changed` |
 
-内置事件：`snapshot`、`state:changed`、`harness:started`、`harness:closed`、`turn:done`、`approval:asked`、`approval:shown`、`approval:respond`、`pet:focus`、`quit`、`plugin:started/disposed/error`。外部插件可以自行扩展事件与服务键。
+内置事件：`snapshot`、`state:changed`、`harness:started`、`harness:closed`、`turn:done`、`approval:asked`、`approval:shown`、`approval:respond`、`pet:focus`、`todo:changed`、`quit`、`plugin:started/disposed/error`。外部插件可以自行扩展事件与服务键。
 
 ### 桌面通知与审批（notifier + harness-host 桥）
 
@@ -195,15 +255,32 @@ node scripts/notify-pet.mjs "需要审批" "bash 工具请求执行" "http://loc
 2. `answerApprovals: true` 时注册 `approval/request` 应答器（prepend 优先）：请求推给桌宠 → 桌宠卡片点「批准/拒绝」→ 决策 POST 回宿主的应答端点 → waterfall 以 `allowed-once`/`rejected` 解决；超时（`responseTimeoutMs`）则 `next()` 让给后续应答器（如 Web UI）；
 3. 退出时自动清理。
 
+**重启 harness 会断连吗？——不会永久断，会自动重连**：
+
+- harness 重启 = 插件行重新加载，`apply` 重新执行：重新拉起宠物窗口、重新订阅通知/审批事件。桥接是**每次启动自动重建**的，无需手动重连；
+- 宠物窗口是 harness 的**受管子进程**：中途崩溃（或重启瞬间撞上单实例锁）会自动**退避重拉**（2s→4s→…→30s，最多连续 5 次；托盘主动退出不会重拉）；
+- 待办（`data/todos.json`）与长期记忆（`data/memory.json`）在磁盘上，重启后仍在；每次启动用独立会话存储，重启后聊天记录清空，但宠物会从记忆里"记得"你和你们的过往；
+- 若用**独立模式**（`start-pet.bat` 跑宠物 + `spawnWindow: false` 桥接），harness 重启只影响桥本身：宠物窗口一直开着，harness 起来后桥自动恢复。
+
+**重启宠物会丢对 harness 的链接吗？——不会，监控/弹窗自动恢复**：
+
+- 这条链路是 harness → 宠物固定端口（`notifyPort`，默认 `17890`）的**无状态 HTTP 推送**，没有握手、没有会话状态：宠物重启后重新监听该端口，harness 侧的桥（一直挂在 harness 里监听会话事件，从不"断开"）下一跳推送就通了；
+- 宠物重启的**那几秒**（端口还没监听）里产生的通知/审批推送，harness 侧会**自动退避重试**（500ms→1s→2s，共 4 次），宠物起来后补送到——而不是直接丢弃；仍失败才记日志放弃；
+- 审批请求有 `responseTimeoutMs`（默认 60s）兜底：宠物离线期间审批会等超时后让给下一个应答器（如 Web UI），不会卡死。
+
 ```yaml
-- id: desktop-pet
-  name: 'desktop-pet/harness-host'
-  config:
-    notifyUrl: 'http://127.0.0.1:17890'
-    webBaseUrl: 'http://localhost:8090'        # 主 harness Web UI 地址
-    sessionPath: '/#/session/{sessionId}'      # 会话页路由模板
-    answerApprovals: true
+# 新行必须用 insert 添加：纯 id 行在 loader 里会因「entry not found」被跳过
+- insert:
+    - id: desktop-pet
+      name: 'desktop-pet/harness-host'
+      config:
+        notifyUrl: 'http://127.0.0.1:17890'
+        webBaseUrl: 'http://localhost:8090'        # 主 harness Web UI 地址
+        sessionPath: '/#/session/{sessionId}'      # 会话页路由模板
+        answerApprovals: true
 ```
+
+> **桥接模式**：如果你的桌宠是**独立运行**的（`start-pet.bat`，而非宿主拉起），把 `spawnWindow: false` 加进上面这行。宿主不再尝试拉起第二个宠物窗口（会撞单实例锁），只把审批/通知转发给已运行桌宠的 notifier 端点。
 
 > **边界**：宠物**自己**的 runtime（SDK 子进程）目前不会主动要审批（捆绑 cordis.yml 未挂审批服务，SDK 协议也无审批应答方法）；审批应答能力走的是**宿主侧**（上面的 harness-host 桥 + 桌宠卡片），这条链已端到端验证（宿主推审批 → 桌宠弹卡片 → 点批准 → 决策回传 → waterfall 解决）。
 
@@ -271,7 +348,7 @@ npm test
 ```
 
 - 原扩展的 `state` / `bridge` / `launch` 测试全部保留（Electron 无关，纯 Node 可跑）；
-- 新增：`host`（生命周期/依赖排序/服务/事件）、`config`（文件+env 合并）、`loader`（外部插件发现）、`schema`、`credentials`、`harness-host`（挂载配置与子进程 env 映射）、`harness-bridge`（审批应答全链路）、`notifier`（通知/审批端点）、`memory`（长期记忆/情节/整理）、`plugins`（内置插件接线）。
+- 新增：`host`（生命周期/依赖排序/服务/事件）、`config`（文件+env 合并）、`loader`（外部插件发现）、`schema`、`credentials`、`harness-host`（挂载配置与子进程 env 映射）、`harness-bridge`（审批应答全链路）、`notifier`（通知/审批端点）、`memory`（长期记忆/情节/整理）、`todo`（待办持久化与聊天指令）、`plugins`（内置插件接线）。
 
 ## 开发与贡献
 

@@ -304,6 +304,33 @@ body {
   letter-spacing: 0.02em;
 }
 
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.head-btn {
+  border: 1px solid rgb(255 255 255 / 0.55);
+  border-radius: 10px;
+  padding: 3px 10px;
+  background: rgb(255 255 255 / 0.16);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.head-btn:hover {
+  background: rgb(255 255 255 / 0.28);
+}
+
+.head-btn.active {
+  background: rgb(255 255 255 / 0.34);
+  border-color: #fff;
+}
+
 .close {
   border: 0;
   background: transparent;
@@ -317,6 +344,164 @@ body {
 
 .close:hover {
   opacity: 1;
+}
+
+/* ---------- todo panel ---------- */
+
+.todo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.todo-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #c6d7ea transparent;
+}
+
+.todo-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.todo-list::-webkit-scrollbar-thumb {
+  background: #c6d7ea;
+  border-radius: 3px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #f3f8fe;
+  border: 1px solid #e4eef8;
+  animation: bubble-in 0.18s ease-out;
+}
+
+.todo-item.done {
+  background: #f2f5f8;
+  border-color: #e8ecf1;
+}
+
+.todo-item.done .todo-text {
+  color: #8a97a8;
+  text-decoration: line-through;
+}
+
+.todo-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #4a90e2;
+  background: #fff;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.todo-check:hover {
+  background: #eaf3ff;
+}
+
+.todo-check:active {
+  transform: scale(0.9);
+}
+
+.todo-item.done .todo-check {
+  background: #4a90e2;
+  border-color: #4a90e2;
+}
+
+.todo-text {
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #1d2b45;
+  word-break: break-word;
+}
+
+.todo-del {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #b0bccb;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.todo-del:hover {
+  color: #d65548;
+  background: #fdeaea;
+}
+
+.todo-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  font-size: 12px;
+  color: #9aa8ba;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.todo-form {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid #e8eef6;
+  background: rgb(250 252 255 / 0.9);
+}
+
+.todo-form input {
+  flex: 1;
+  border: 1px solid #d5e2f0;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  outline: none;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.todo-form input:focus {
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 3px rgb(74 144 226 / 0.16);
+}
+
+.todo-form button {
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #5ba0f0, #357ab8);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.todo-form button:active {
+  transform: scale(0.96);
 }
 
 /* ---------- approval card ---------- */

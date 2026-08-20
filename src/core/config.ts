@@ -59,6 +59,11 @@ export const BUILTIN_DEFAULTS: Record<string, Record<string, unknown>> = {
   window: {},
   notifier: {},
   identity: {},
+  // `memory` and `todo` ship with the built-in registry too; listing them here
+  // is what tells the loader these keys are built-ins (never external modules)
+  // and gives them a default row so config-relative paths can be anchored.
+  memory: {},
+  todo: {},
 }
 
 const ENV_PREFIX = 'DSH_PET_'

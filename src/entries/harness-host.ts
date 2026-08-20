@@ -64,6 +64,15 @@ export interface HarnessHostConfig {
   onlyRootSessions?: boolean | undefined
   /** Local approval-response endpoint port; 0 picks an ephemeral port (default 0). */
   respondPort?: number | undefined
+  /**
+   * Spawn the pet window as a managed child process (default true). Set to
+   * `false` for bridge-only mode: the host does NOT launch a pet window and
+   * just forwards approvals/notifications to an already-running pet's
+   * notifier endpoint (`notifyUrl`). Use this when the pet is started
+   * standalone (its single-instance lock would make a host-spawned second
+   * window quit immediately).
+   */
+  spawnWindow?: boolean | undefined
 }
 
 /** Validate and default a raw config row (callable like the original schemastery `Config`). */
@@ -109,6 +118,7 @@ export function Config(input: unknown): HarnessHostConfig {
     ...num('responseTimeoutMs') !== undefined && { responseTimeoutMs: num('responseTimeoutMs') },
     ...bool('onlyRootSessions') !== undefined && { onlyRootSessions: bool('onlyRootSessions') },
     ...num('respondPort') !== undefined && { respondPort: num('respondPort') },
+    ...bool('spawnWindow') !== undefined && { spawnWindow: bool('spawnWindow') },
   }
 }
 
@@ -138,6 +148,15 @@ export interface LogEventLike {
 function snippet(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length > 80 ? `${flat.slice(0, 80)}…` : flat
+}
+
+/**
+ * Backoff delay before respawning a crashed pet window: 2s, 4s, 8s, … capped
+ * at 30s. The first respawn is quick so a transient crash (or the
+ * single-instance-lock race right after a harness restart) heals fast.
+ */
+export function respawnDelayMs(restarts: number): number {
+  return Math.min(2000 * 2 ** Math.max(0, restarts - 1), 30000)
 }
 
 /** Build the web-UI jump URL for one session, or undefined without a base. */
@@ -294,6 +313,15 @@ interface PendingApproval {
 }
 
 /**
+ * Backoff delay before retrying a push to the pet: 500ms, 1s, 2s — a few
+ * seconds of retry window that covers a pet window restart (its notifier
+ * port is briefly down while it comes back up).
+ */
+export function pushRetryDelayMs(attempt: number): number {
+  return 500 * 2 ** Math.max(0, attempt - 1)
+}
+
+/**
  * Bridge host activity to a running pet's notifier endpoint. Extracted from
  * {@link apply} so the bridge is testable without spawning Electron.
  * @param ctx - plugin context (uses `on` and `logger`).
@@ -306,14 +334,30 @@ export function bridgeHost(ctx: CordisLikeContext, config: HarnessHostConfig): (
   const notifyUrl = config.notifyUrl ?? 'http://127.0.0.1:17890'
   if (notifyUrl === '') return () => {}
 
-  const post = (path: string, payload: Record<string, unknown>): Promise<void> =>
-    fetch(`${notifyUrl}${path}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    }).then(() => undefined, (error) => {
-      logger.warn('pet notify push failed: %s', error instanceof Error ? error.message : String(error))
-    })
+  /**
+   * Fire-and-forget push to the pet, retried with backoff. The pet's notifier
+   * listens on a fixed port and rebinds it on restart, so a short outage (the
+   * pet window restarting, or a single-instance race right after a harness
+   * restart) is absorbed by the retries instead of dropping the notification.
+   */
+  const post = async (path: string, payload: Record<string, unknown>, attempts = 4): Promise<void> => {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        await fetch(`${notifyUrl}${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        return
+      } catch (error) {
+        if (attempt >= attempts) {
+          logger.warn('pet notify push failed after %d attempts: %s', attempts, error instanceof Error ? error.message : String(error))
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, pushRetryDelayMs(attempt)))
+      }
+    }
+  }
 
   const pendingApprovals = new Map<string, PendingApproval>()
   const lastTexts = new Map<string, string>()
@@ -473,24 +517,63 @@ export function bridgeHost(ctx: CordisLikeContext, config: HarnessHostConfig): (
 export function apply(ctx: CordisLikeContext, rawConfig: unknown): void {
   const config = Config(rawConfig)
   const logger = ctx.logger('desktop-pet')
+
+  // Bridge-only mode: reuse an already-running pet window (its notifier
+  // endpoint at `notifyUrl`) instead of spawning a managed child. The
+  // standalone pet holds the single-instance lock, so a host-spawned second
+  // window would bounce straight off it; forwarding alone keeps approval
+  // cards and task-done pushes flowing to the existing window.
+  if (config.spawnWindow === false) {
+    const bridgeTeardown = bridgeHost(ctx, config)
+    ctx.effect(bridgeTeardown, 'desktop-pet bridge')
+    return
+  }
+
   const require = createRequire(import.meta.url)
   const electronPath = config.electronPath ?? (require('electron') as string)
   const startupPath = config.startupPath ?? defaultStartupPath(import.meta.url)
   const spec = resolveChildSpec(config, electronPath, startupPath)
-  const child = spawn(spec.command, spec.args, { env: spec.env, stdio: 'ignore' })
+
+  // The pet window is a managed child: when it exits unexpectedly it is
+  // respawned with backoff, so a crash (or a single-instance-lock race right
+  // after a harness restart) does not leave the bridge dead until the next
+  // harness start. A clean exit (code 0 — e.g. the user quit from the tray)
+  // is respected and never respawned.
+  let child: import('node:child_process').ChildProcess | undefined
   let stopping = false
-  child.on('error', (error) => {
-    logger.warn('pet window failed to start: %s', error.message)
-  })
-  child.on('exit', (code, signal) => {
-    if (stopping || code === 0) return
-    logger.warn('pet window exited unexpectedly (code %s, signal %s)', code, signal)
-  })
+  let restarts = 0
+  let lastExitAt = Date.now()
+  let respawnTimer: ReturnType<typeof setTimeout> | undefined
+
+  const spawnPet = (): void => {
+    if (stopping) return
+    child = spawn(spec.command, spec.args, { env: spec.env, stdio: 'ignore' })
+    child.on('error', (error) => {
+      logger.warn('pet window failed to start: %s', error.message)
+    })
+    child.on('exit', (code, signal) => {
+      if (stopping || code === 0) return
+      logger.warn('pet window exited unexpectedly (code %s, signal %s)', code, signal)
+      // A long-lived run means the previous crash was one-off: reset the counter.
+      if (Date.now() - lastExitAt > 60000) restarts = 0
+      lastExitAt = Date.now()
+      restarts += 1
+      if (restarts > 5) {
+        logger.warn('pet window crashed %d times in a row; giving up until the next harness start', restarts)
+        return
+      }
+      const delay = respawnDelayMs(restarts)
+      logger.info('respawning pet window in %sms (attempt %d)', delay, restarts)
+      respawnTimer = setTimeout(spawnPet, delay)
+    })
+  }
+  spawnPet()
 
   const bridgeTeardown = bridgeHost(ctx, config)
   ctx.effect(() => {
     stopping = true
-    child.kill()
+    if (respawnTimer !== undefined) clearTimeout(respawnTimer)
+    child?.kill()
     bridgeTeardown()
   }, 'desktop-pet window')
 }

@@ -49,6 +49,9 @@ export type { PetIdentityService } from './core/plugin.ts'
 export { memoryPlugin, memoryConfig, DEFAULT_PERSONA } from './plugins/memory.ts'
 export type { MemoryPluginOptions } from './plugins/memory.ts'
 export type { PetMemoryService } from './core/plugin.ts'
+export { todoPlugin, todoConfig } from './plugins/todo.ts'
+export type { TodoPluginOptions } from './plugins/todo.ts'
+export type { PetTodoService, TodoItem } from './core/plugin.ts'
 
 // App bootstrap + entries
 export { startPet, BUILTIN_PLUGINS } from './app.ts'
