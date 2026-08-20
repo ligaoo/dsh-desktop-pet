@@ -58,7 +58,9 @@ export const windowConfig: Schema<WindowPluginOptions> = object({
   width: number(260),
   height: number(300),
   expandedWidth: number(340),
-  expandedHeight: number(620),
+  // 610 = collapsed 300 + chat panel 300 + its 10px top margin, so the
+  // top-pinned pet keeps the same 10px gap to the panel in both states.
+  expandedHeight: number(610),
   alwaysOnTop: boolean(true),
   skipTaskbar: boolean(true),
   title: string(''),
@@ -225,15 +227,21 @@ export const windowPlugin = definePlugin<WindowPluginOptions>({
     ipcMain.on('desktop-pet:move-to', onMoveTo)
     ipcMain.handle('desktop-pet:set-expanded', (_event: unknown, expanded: unknown) => {
       if (typeof expanded !== 'boolean' || window.isDestroyed()) return
-      // setBounds with an explicit x/y keeps the window exactly where it is
-      // instead of letting a bare setSize nudge it (near a screen edge the OS
-      // may move the window, which used to desync the drag baseline).
-      const [x = 0, y = 0] = window.getPosition()
+      // Grow/shrink the window around its horizontal CENTER: the pet is
+      // centered in the window, so keeping the center fixed means the pet
+      // never slides left or right while the chat panel opens/closes. The
+      // vertical edge is left alone — the renderer top-pins the pet, so
+      // growing downward (or shrinking upward) does not move it either.
+      // setBounds with an explicit x/y still keeps the window where it should
+      // be instead of letting a bare setSize nudge it.
+      const bounds = window.getBounds()
+      const nextWidth = expanded ? (options.expandedWidth ?? 340) : (options.width ?? 260)
+      const nextHeight = expanded ? (options.expandedHeight ?? 620) : (options.height ?? 300)
       window.setBounds({
-        x,
-        y,
-        width: expanded ? (options.expandedWidth ?? 340) : (options.width ?? 260),
-        height: expanded ? (options.expandedHeight ?? 620) : (options.height ?? 300),
+        x: Math.round(bounds.x + (bounds.width - nextWidth) / 2),
+        y: bounds.y,
+        width: nextWidth,
+        height: nextHeight,
       })
     })
     ipcMain.handle('desktop-pet:approval-respond', (_event: unknown, requestId: unknown, outcome: unknown) => {

@@ -18,6 +18,21 @@ const approvalText = document.querySelector('.approval-text')
 const approveButton = document.getElementById('approve')
 const rejectButton = document.getElementById('reject')
 
+// --- Pin the pet and its speech bubble to fixed window-relative positions.
+// The pet is measured in its collapsed flex layout, then flipped to
+// `position: absolute` (out of the flow) at that exact spot. Expanding the
+// chat panel grows the window and reflows the document, but an absolutely
+// positioned pet is immune to both — that is what kills the vertical jump on
+// every double-click (previously the flex flow shoved the pet up while the
+// panel appeared before the window had grown, then let it drop back).
+// The bubble is glued just above the pet with a `bottom` that is invariant
+// to the window height (calc(100vh - X)), so it stays put in both states too.
+const petTop = pet.offsetTop
+pet.style.position = 'absolute'
+pet.style.top = `${petTop}px`
+bubble.style.position = 'absolute'
+bubble.style.bottom = `calc(100vh - ${petTop - 10}px)`
+
 // --- Image skin (零代码换宠): drop pet.png / pet-<mood>.png into renderer/.
 // The <img> probes per-mood images first, falls back to pet.png, then to the
 // CSS creature when no image exists at all.
@@ -190,17 +205,51 @@ function reanchor(keepX, keepY) {
 }
 
 /**
- * Expand or collapse the chat panel (and the window with it), keeping the
- * pet glued to its current screen position.
+ * Resolve once the window has actually been resized (with a short fallback
+ * so a missed 'resize' event cannot wedge the toggle).
  */
-function setExpanded(next) {
-  expanded = next
-  chat.classList.toggle('hidden', !expanded)
-  const keepX = window.screenX + petCenterX()
-  const keepY = window.screenY + petBottom()
-  window.desktopPet.setExpanded(expanded)
-  reanchor(keepX, keepY)
-  if (expanded) input.focus()
+function waitForResize() {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 150)
+    window.addEventListener('resize', () => {
+      clearTimeout(timer)
+      resolve()
+    }, { once: true })
+  })
+}
+
+let toggling = false
+
+/**
+ * Expand or collapse the chat panel (and the window with it). The pet is
+ * absolutely pinned and the main process keeps the window horizontally
+ * centered, so the pet never moves; the only remaining job is to order the
+ * resize and the panel visibility so nothing clips:
+ * - expand: grow the window first, then show the panel (the panel never
+ *   overflows the still-small window);
+ * - collapse: hide the panel first, then shrink (nothing clips).
+ */
+async function setExpanded(next) {
+  if (toggling) return
+  toggling = true
+  try {
+    expanded = next
+    const keepX = window.screenX + petCenterX()
+    const keepY = window.screenY + petBottom()
+    if (next) {
+      window.desktopPet.setExpanded(true)
+      await waitForResize()
+      chat.classList.remove('hidden')
+    } else {
+      chat.classList.add('hidden')
+      window.desktopPet.setExpanded(false)
+      await waitForResize()
+    }
+    reanchor(keepX, keepY)
+    if (expanded) input.focus()
+  } finally {
+    toggling = false
+  }
 }
 
 // Single click also fires after a drag, so the chat toggles on double click.
