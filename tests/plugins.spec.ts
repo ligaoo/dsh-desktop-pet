@@ -20,7 +20,10 @@ class FakeHarness implements PetHarness {
       id,
       run: (input, options) => {
         this.calls.push(input)
-        const reply = this.replies[input] ?? `reply:${input}`
+        // The bridge stamps every prompt with a time note; strip it for the
+        // canned-reply lookup so tests can map clean user texts.
+        const stripped = input.replace(/^\[系统提示：当前时间[^\]]*\]\n\n/, '')
+        const reply = this.replies[stripped] ?? `reply:${stripped}`
         const notify = (notification: HarnessNotification): void => options?.onNotification?.(notification)
         notify({ method: 'session.status', params: { sessionId: id, status: 'running' } })
         notify({ method: 'session.event', params: { sessionId: id, event: { type: 'tool/call', data: { name: 'bash' } } } })
@@ -65,7 +68,7 @@ describe('built-in plugin wiring', () => {
 
     const pet = host.get<import('../src/core/plugin.ts').PetService>(SERVICES.pet)!
     await expect(pet.prompt('hi')).resolves.toBe('hello there')
-    expect(fake.calls).toEqual(['hi'])
+    expect(fake.calls[0]).toMatch(/^\[系统提示：当前时间 .+\]\n\nhi$/)
     expect(snapshots.map(snapshot => snapshot.mood)).toEqual(['thinking', 'acting', 'speaking', 'idle'])
 
     await host.dispose()
@@ -198,9 +201,9 @@ describe('built-in plugin wiring', () => {
     await pet.prompt('hi')
     expect(harness.calls[0]).toContain('小蓝')
     expect(harness.calls[0]).toContain('hi')
-    // The second prompt goes out verbatim.
+    // The second prompt goes out verbatim (plus the time stamp).
     await pet.prompt('again')
-    expect(harness.calls[1]).toBe('again')
+    expect(harness.calls[1]).toMatch(/^\[系统提示：当前时间 .+\]\n\nagain$/)
     await host.dispose()
   })
 
@@ -220,8 +223,41 @@ describe('built-in plugin wiring', () => {
     await host.start()
     const pet = host.get<import('../src/core/plugin.ts').PetService>(SERVICES.pet)!
     await pet.prompt('hi')
-    expect(harness.calls[0]).toBe('hi')
+    expect(harness.calls[0]).toMatch(/^\[系统提示：当前时间 .+\]\n\nhi$/)
     await host.dispose()
+  })
+
+  it('stamps every prompt with the current local time (and can be disabled)', async () => {
+    const { formatNow, buildTimeNote } = await import('../src/plugins/bridge.ts')
+    expect(formatNow(new Date(2025, 7, 20, 14, 32, 45))).toBe('2025年8月20日 星期三 14:32:45')
+    expect(buildTimeNote(new Date(2025, 7, 20, 14, 32, 45))).toContain('2025年8月20日 星期三 14:32:45')
+
+    const fake = new FakeHarness({ hi: 'hello' })
+    const host = hostWithFakeHarness(fake)
+    await host.start()
+    const pet = host.get<import('../src/core/plugin.ts').PetService>(SERVICES.pet)!
+    await pet.prompt('hi')
+    expect(fake.calls[0]).toMatch(/^\[系统提示：当前时间 .+\]\n\nhi$/)
+    // Every turn is stamped, not just the first one.
+    await pet.prompt('again')
+    expect(fake.calls[1]).toMatch(/^\[系统提示：当前时间 .+\]\n\nagain$/)
+    await host.dispose()
+
+    // timeNote: false sends the prompt through verbatim.
+    const off = new FakeHarness({ hi: 'hello' })
+    const hostOff = new PetHost()
+    hostOff.use(definePlugin({
+      name: 'runtime',
+      setup(ctx) {
+        ctx.provide<PetHarness>(SERVICES.harness, off)
+      },
+    }))
+    hostOff.use(bridgePlugin, { timeNote: false })
+    await hostOff.start()
+    const petOff = hostOff.get<import('../src/core/plugin.ts').PetService>(SERVICES.pet)!
+    await petOff.prompt('hi')
+    expect(off.calls).toEqual(['hi'])
+    await hostOff.dispose()
   })
 
   it('injects persona and memory on the first prompt and teaches facts via 记住', async () => {
@@ -255,9 +291,9 @@ describe('built-in plugin wiring', () => {
       expect(harness.calls[0]).toContain('用户喜欢猫')
       expect(harness.calls[0]).toContain('你好')
 
-      // Later prompts go out verbatim.
+      // Later prompts go out verbatim (plus the time stamp).
       await pet.prompt('再说一遍')
-      expect(harness.calls[1]).toBe('再说一遍')
+      expect(harness.calls[1]).toMatch(/^\[系统提示：当前时间 .+\]\n\n再说一遍$/)
 
       // "记住：…" teaches a persistent fact.
       await pet.prompt('记住：我喜欢喝咖啡')

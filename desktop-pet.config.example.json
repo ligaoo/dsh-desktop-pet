@@ -14,7 +14,8 @@
     },
     "state": {},
     "bridge": {
-      "sessionId": "desktop-pet"
+      "sessionId": "desktop-pet",
+      "timeNote": true
     },
     "memory": {
       "dir": "data",

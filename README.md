@@ -86,6 +86,10 @@ DEEPSEEK_API_KEY=… npm run pet        # 等价：node lib/entries/cli.js
 { "plugins": { "memory": { "dir": "data", "maxHistory": 40, "maxFacts": 100, "maxEpisodes": 100 } } }
 ```
 
+### 时间概念（实时）
+
+每次对话，桌宠都会在消息里附上**本机当前时间**（`bridge.timeNote`，默认开启），所以它知道现在是几点、星期几、几月几号，而不是没有时间概念。直接问它「现在几点」「今天是几号」「明天周几」即可，也可以基于当前时间安排待办。不想注入时间时可设 `{ "plugins": { "bridge": { "timeNote": false } } }`。
+
 ### 待办清单（记录待办 / 查看待办）
 
 `todo` 插件让宠物帮你记待办，数据存在 `data/todos.json`（已 gitignore），跨重启保留：

@@ -12,19 +12,39 @@
 
 import { DesktopPetBridge } from '../core/bridge.ts'
 import { definePlugin, EVENTS, SERVICES, type PetLogger, type PetService, type PetTodoService } from '../core/plugin.ts'
-import { object, string, type Schema } from '../core/schema.ts'
+import { boolean, object, string, type Schema } from '../core/schema.ts'
 import type { PetHarness } from '../types.ts'
 
 /** Options for the `bridge` plugin. */
 export interface BridgePluginOptions {
   /** Stable session id; every pet chat shares one conversation (default `desktop-pet`). */
   sessionId?: string | undefined
+  /**
+   * Stamp every user turn with the current local time so the model always
+   * has a time concept ("现在几点？" / "今天是几号？") instead of guessing or
+   * claiming it cannot know (default true).
+   */
+  timeNote?: boolean | undefined
 }
 
 /** Options schema for the `bridge` plugin. */
 export const bridgeConfig: Schema<BridgePluginOptions> = object({
   sessionId: string('desktop-pet'),
+  timeNote: boolean(true),
 })
+
+const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'] as const
+
+/** Format a date as a Chinese local-time stamp, e.g. `2025年8月20日 星期三 14:32:45`. */
+export function formatNow(date: Date = new Date()): string {
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 星期${WEEKDAY_NAMES[date.getDay()]} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+/** The per-turn system note that grounds the model in the current local time. */
+export function buildTimeNote(date: Date = new Date()): string {
+  return `[系统提示：当前时间 ${formatNow(date)}（来自本机时钟），关于日期、星期、时间的回答请以此为准。]`
+}
 
 /** Shared guard: questions and recall queries never become todos. */
 const TODO_QUESTION_HINT = /[？?]|吗|呢|嘛|什么|怎么|为什么|是不是|能不能|可不可以|行不行|有没有|哪些/
@@ -357,6 +377,13 @@ export const bridgePlugin = definePlugin<BridgePluginOptions>({
         // Same for a bulk list: the pet confirms the recorded count.
         if (bulkTodoItems !== null && bulkTodoItems.length > 0) {
           input = `${input}\n\n[系统提示：已把以下 ${bulkTodoItems.length} 条加入主人的待办清单：${bulkTodoItems.map(item => `「${item}」`).join('、')}。请用一两句话简短确认，不要复述整条清单。]`
+        }
+
+        // --- Real-time clock: stamp every user turn with the current local
+        // time so the model always has a time concept ("现在几点？" / "今天几
+        // 号？") instead of guessing or claiming it cannot know.
+        if (options.timeNote !== false) {
+          input = `${buildTimeNote()}\n\n${input}`
         }
 
         const reply = await bridge.prompt(input)
