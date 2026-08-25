@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assistantTextOf,
   buildJumpUrl,
-  Config,
+  resolvePetConfig,
   findPendingApprovalId,
   pushRetryDelayMs,
   respawnDelayMs,
@@ -12,19 +12,19 @@ import {
 
 describe('harness-host Config', () => {
   it('fills the stock launch defaults', () => {
-    expect(Config({})).toEqual({})
+    expect(resolvePetConfig({})).toEqual({})
   })
 
   it('keeps a custom launch as given', () => {
-    expect(Config({ runtime: 'node', runtimeArgs: ['apps/cli/src/bin.ts'], cwd: '/repo', provider: 'custom', model: 'deepseek-v4-pro' }))
+    expect(resolvePetConfig({ runtime: 'node', runtimeArgs: ['apps/cli/src/bin.ts'], cwd: '/repo', provider: 'custom', model: 'deepseek-v4-pro' }))
       .toEqual({ runtime: 'node', runtimeArgs: ['apps/cli/src/bin.ts'], cwd: '/repo', provider: 'custom', model: 'deepseek-v4-pro' })
   })
 
   it('rejects non-object input and bad fields', () => {
-    expect(() => Config(null)).toThrow(/must be a plain object/)
-    expect(() => Config('nope')).toThrow(/must be a plain object/)
-    expect(() => Config({ runtime: 42 })).toThrow(/config.runtime must be a string/)
-    expect(() => Config({ runtimeArgs: ['ok', 42] })).toThrow(/runtimeArgs must be an array of strings/)
+    expect(() => resolvePetConfig(null)).toThrow(/must be a plain object/)
+    expect(() => resolvePetConfig('nope')).toThrow(/must be a plain object/)
+    expect(() => resolvePetConfig({ runtime: 42 })).toThrow(/config.runtime must be a string/)
+    expect(() => resolvePetConfig({ runtimeArgs: ['ok', 42] })).toThrow(/runtimeArgs must be an array of strings/)
   })
 })
 

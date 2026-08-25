@@ -75,8 +75,13 @@ export interface HarnessHostConfig {
   spawnWindow?: boolean | undefined
 }
 
-/** Validate and default a raw config row (callable like the original schemastery `Config`). */
-export function Config(input: unknown): HarnessHostConfig {
+/**
+ * Validate and default a raw config row. Deliberately NOT exported under the
+ * cordis-reserved `Config` name: cordis treats `Config` as a schemastery schema
+ * and reads `Config['~standard'].validate`, which a plain function lacks.
+ * `apply` calls this directly instead.
+ */
+export function resolvePetConfig(input: unknown): HarnessHostConfig {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     throw new TypeError('desktop-pet: config must be a plain object')
   }
@@ -515,7 +520,7 @@ export function bridgeHost(ctx: CordisLikeContext, config: HarnessHostConfig): (
  * @param rawConfig - raw {@link HarnessHostConfig}.
  */
 export function apply(ctx: CordisLikeContext, rawConfig: unknown): void {
-  const config = Config(rawConfig)
+  const config = resolvePetConfig(rawConfig)
   const logger = ctx.logger('desktop-pet')
 
   // Bridge-only mode: reuse an already-running pet window (its notifier

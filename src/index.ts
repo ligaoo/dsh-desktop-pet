@@ -60,7 +60,7 @@ export { main as cliMain } from './entries/cli.ts'
 export { main as windowMain } from './entries/window.ts'
 export {
   apply as harnessHostApply,
-  Config as harnessHostConfig,
+  resolvePetConfig as harnessHostConfig,
   name as harnessHostName,
   buildJumpUrl,
   findPendingApprovalId,
