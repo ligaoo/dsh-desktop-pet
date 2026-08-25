@@ -15,7 +15,7 @@ export interface PetRoute {
   cwd: string
   /** Provider route for the pet's agent (default `deepseek-official`). */
   provider: string
-  /** Conversation model for the pet's agent (default `deepseek-v4-flash`). */
+  /** Conversation model for the pet's agent (default `deepseek-v4-flash-vision-exp`, the vision-capable variant). */
   model: string
 }
 
@@ -57,7 +57,7 @@ export function resolvePetLaunch(env: NodeJS.ProcessEnv = process.env, cwd: stri
     route: {
       cwd: env.DSH_PET_CWD ?? cwd,
       provider: env.DSH_PET_PROVIDER ?? 'deepseek-official',
-      model: env.DSH_PET_MODEL ?? 'deepseek-v4-flash',
+      model: env.DSH_PET_MODEL ?? 'deepseek-v4-flash-vision-exp',
     },
   }
 }

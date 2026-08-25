@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Image input (user → model): the chat composer accepts a pasted/dropped/picked image, shows a thumbnail, and sends it with the prompt. The pet persists the image into `pet-uploads/` under the session workspace and the model is told the file path, so it can open the picture with its own file tool. This keeps the SDK wire text-only (the model layer only accepts pre-registered durable attachments, which this transport cannot create) and leaves DSH source untouched.
 
 ### Changed
+- Default conversation model is now the vision-capable `deepseek-v4-flash-vision-exp` so the pet can read images; the text-only `deepseek-v4-flash` remains available via config (`runtime.model`) or `DSH_PET_MODEL`.
+
+### Changed
 - Extracted from `deepseek-harness/packages/extensions/desktop-pet` into a standalone project with vendored SDK artifacts.
 
 ## [0.1.0] - 2026-08-19

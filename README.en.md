@@ -42,7 +42,7 @@ Config file: `./desktop-pet.config.json` (or `DSH_PET_CONFIG` / `--config`; `.js
 ```jsonc
 {
   "name": "小蓝",                                  // the pet's name (top-level)
-  "defaults": { "provider": "deepseek-official", "model": "deepseek-v4-flash" },
+  "defaults": { "provider": "deepseek-official", "model": "deepseek-v4-flash-vision-exp" },
   "plugins": {
     "runtime": { "command": "dsh-jsonrpc-agent", "args": [] },
     "bridge":  { "sessionId": "desktop-pet" },

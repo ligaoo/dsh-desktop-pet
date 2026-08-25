@@ -5,7 +5,7 @@ describe('resolvePetLaunch', () => {
   it('defaults to the installed dsh-jsonrpc-agent bin and the stock route', () => {
     expect(resolvePetLaunch({}, '/work')).toEqual({
       launch: { command: 'dsh-jsonrpc-agent', args: [] },
-      route: { cwd: '/work', provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      route: { cwd: '/work', provider: 'deepseek-official', model: 'deepseek-v4-flash-vision-exp' },
     })
   })
 

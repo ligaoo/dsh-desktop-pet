@@ -31,7 +31,7 @@ export interface RuntimePluginOptions {
   cwd?: string | undefined
   /** Provider route for the pet's agent (default `deepseek-official`). */
   provider?: string | undefined
-  /** Conversation model for the pet's agent (default `deepseek-v4-flash`). */
+  /** Conversation model for the pet's agent (default `deepseek-v4-flash-vision-exp`, the vision-capable variant). */
   model?: string | undefined
   /** Per-request timeout (ms); unset waits indefinitely (a turn can run long). */
   requestTimeoutMs?: number | undefined
@@ -160,7 +160,7 @@ export const runtimePlugin = definePlugin<RuntimePluginOptions>({
       (options.args ?? []).join(' '),
       options.cwd ?? process.cwd(),
       options.provider ?? 'deepseek-official',
-      options.model ?? 'deepseek-v4-flash',
+      options.model ?? 'deepseek-v4-flash-vision-exp',
       env.DEEPSEEK_API_KEY !== undefined ? ', api-key=injected' : ', api-key=absent',
     )
     return async () => {

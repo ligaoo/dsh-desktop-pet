@@ -153,7 +153,7 @@ DEEPSEEK_API_KEY=… npm run pet        # 等价：node lib/entries/cli.js
 
 ```jsonc
 {
-  "defaults": { "provider": "deepseek-official", "model": "deepseek-v4-flash" },
+  "defaults": { "provider": "deepseek-official", "model": "deepseek-v4-flash-vision-exp" },
   "plugins": {
     "runtime": { "command": "dsh-jsonrpc-agent", "args": [] },
     "bridge":  { "sessionId": "desktop-pet" },
@@ -174,7 +174,7 @@ DEEPSEEK_API_KEY=… npm run pet        # 等价：node lib/entries/cli.js
 | `DSH_PET_RUNTIME_ARGS` | `[]` | runtime 附加参数（JSON 字符串数组） |
 | `DSH_PET_CWD` | `process.cwd()` | 会话工作目录 |
 | `DSH_PET_PROVIDER` | `deepseek-official` | provider 路由 |
-| `DSH_PET_MODEL` | `deepseek-v4-flash` | 对话模型 |
+| `DSH_PET_MODEL` | `deepseek-v4-flash-vision-exp` | 对话模型（默认视觉可读图；需纯文本可设 `deepseek-v4-flash`） |
 
 `DEEPSEEK_API_KEY` 通过继承环境到达 runtime，与 SDK client 一致。
 
