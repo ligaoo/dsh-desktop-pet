@@ -17,6 +17,9 @@ const approvalCard = document.getElementById('approval')
 const approvalText = document.querySelector('.approval-text')
 const approveButton = document.getElementById('approve')
 const rejectButton = document.getElementById('reject')
+const attachButton = document.getElementById('attach')
+const attachmentStrip = document.getElementById('attachments')
+const fileInput = document.getElementById('file')
 
 // --- Pin the pet and its speech bubble to fixed window-relative positions.
 // The pet is measured in its collapsed flex layout, then flipped to
@@ -388,6 +391,19 @@ function appendImage(source) {
   log.scrollTop = log.scrollHeight
 }
 
+/** Append one user-attached image to the chat log. */
+function appendUserImage(source) {
+  const row = document.createElement('div')
+  row.className = 'msg user'
+  const img = document.createElement('img')
+  img.className = 'chat-img'
+  img.src = source
+  img.alt = '我发送的图片'
+  row.append(img)
+  log.append(row)
+  log.scrollTop = log.scrollHeight
+}
+
 /**
  * Render one assistant reply: its text plus any images the model produced.
  * `reply` is the `PetReply` object the main process resolves — a plain string
@@ -414,12 +430,16 @@ function cleanError(error) {
 form.addEventListener('submit', (event) => {
   event.preventDefault()
   const text = input.value.trim()
-  if (text === '') return
+  const images = attachedImages.slice()
+  if (text === '' && images.length === 0) return
   input.value = ''
-  appendMessage('user', text)
+  if (text !== '') appendMessage('user', text)
+  for (const image of images) appendUserImage(image.dataUrl)
+  attachedImages.length = 0
+  renderAttachments()
   input.disabled = true
   sendButton.disabled = true
-  window.desktopPet.prompt(text)
+  window.desktopPet.prompt(text, images)
     .then((reply) => appendAssistant(reply))
     .catch((error) => appendMessage('error', cleanError(error)))
     .finally(() => {
@@ -427,6 +447,87 @@ form.addEventListener('submit', (event) => {
       sendButton.disabled = false
       input.focus()
     })
+})
+
+// ---------- image attachments ----------
+// The window lets the user attach an image (file picker, paste, or drag-and-
+// drop). The renderer reads each one to a data URL; the main process persists
+// it into the session workspace and references the path in the prompt so the
+// model's own file tool can read it.
+const attachedImages = []  // Array<{ dataUrl: string }>
+
+function isImageFile(file) {
+  return typeof file.type === 'string' && file.type.startsWith('image/')
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+async function addImageFiles(files) {
+  for (const file of files) {
+    if (!isImageFile(file)) continue
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      attachedImages.push({ dataUrl })
+    } catch {
+      // Ignore an unreadable file; the send just goes out without it.
+    }
+  }
+  renderAttachments()
+}
+
+function renderAttachments() {
+  attachmentStrip.textContent = ''
+  attachmentStrip.classList.toggle('hidden', attachedImages.length === 0)
+  attachedImages.forEach((image, index) => {
+    const thumb = document.createElement('div')
+    thumb.className = 'attachment-thumb'
+    const img = document.createElement('img')
+    img.src = image.dataUrl
+    img.alt = `图片 ${index + 1}`
+    const remove = document.createElement('button')
+    remove.type = 'button'
+    remove.className = 'attachment-remove'
+    remove.textContent = '×'
+    remove.title = '移除这张图片'
+    remove.addEventListener('click', () => {
+      attachedImages.splice(index, 1)
+      renderAttachments()
+    })
+    thumb.append(img, remove)
+    attachmentStrip.append(thumb)
+  })
+}
+
+attachButton.addEventListener('click', () => fileInput.click())
+fileInput.addEventListener('change', () => {
+  addImageFiles(fileInput.files)
+  fileInput.value = ''
+})
+// Paste an image (Ctrl+V) straight into the composer.
+form.addEventListener('paste', (event) => {
+  const items = event.clipboardData && event.clipboardData.items
+  if (!items) return
+  const files = []
+  for (const item of items) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file !== null) files.push(file)
+    }
+  }
+  if (files.length > 0) addImageFiles(files)
+})
+// Drag-and-drop an image onto the chat panel.
+chat.addEventListener('dragover', (event) => event.preventDefault())
+chat.addEventListener('drop', (event) => {
+  event.preventDefault()
+  if (event.dataTransfer && event.dataTransfer.files) addImageFiles(event.dataTransfer.files)
 })
 
 // ---------- todo panel ----------

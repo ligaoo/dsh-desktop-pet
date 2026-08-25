@@ -303,4 +303,47 @@ describe('built-in plugin wiring', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('persists user images to the workspace and references the paths in the prompt', async () => {
+    const { mkdtemp, rm, readdir, readFile } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = await mkdtemp(join(tmpdir(), 'pet-bridge-img-'))
+    try {
+      const fake = new FakeHarness({ '看一下': '看到了' })
+      const host = new PetHost()
+      host.use(definePlugin({
+        name: 'runtime',
+        description: 'test double providing a harness and a workspace dir',
+        setup(ctx) {
+          ctx.provide<PetHarness>(SERVICES.harness, fake)
+          ctx.provide<string>(SERVICES.workspace, dir)
+        },
+      }))
+      host.use(statePlugin)
+      host.use(bridgePlugin)
+      await host.start()
+      const pet = host.get<import('../src/core/plugin.ts').PetService>(SERVICES.pet)!
+      // 1x1 transparent PNG.
+      const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+      const reply = await pet.prompt('看一下', [{ dataUrl }])
+      expect(typeof reply.response).toBe('string')
+      expect(reply.response.length).toBeGreaterThan(0)
+
+      const files = await readdir(join(dir, 'pet-uploads'))
+      expect(files).toHaveLength(1)
+      expect(files[0]).toMatch(/^img-.*\.png$/)
+      const bytes = await readFile(join(dir, 'pet-uploads', files[0]!))
+      expect(bytes.length).toBeGreaterThan(0)
+
+      // The prompt the model received references the persisted file path.
+      const lastCall = fake.calls[fake.calls.length - 1]!
+      expect(lastCall).toContain('pet-uploads')
+      expect(lastCall).toContain(files[0]!)
+      expect(lastCall).toContain('主人发来 1 张图片')
+      await host.dispose()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

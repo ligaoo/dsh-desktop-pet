@@ -7,7 +7,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('desktopPet', {
-  prompt: (text) => ipcRenderer.invoke('desktop-pet:prompt', text),
+  prompt: (text, images) => ipcRenderer.invoke('desktop-pet:prompt', text, images),
   setExpanded: (expanded) => ipcRenderer.invoke('desktop-pet:set-expanded', expanded),
   dragTo: (x, y) => ipcRenderer.send('desktop-pet:drag-to', x, y),
   moveTo: (x, y) => ipcRenderer.send('desktop-pet:move-to', x, y),

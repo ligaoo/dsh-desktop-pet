@@ -52,7 +52,9 @@ DEEPSEEK_API_KEY=… npm run pet        # 等价：node lib/entries/cli.js
 
 **回复是流式的**：`assistant/chunk` 的 `text-delta` 片段会被实时累积进气泡（`core/bridge.ts`），逐字显示，而不是等整轮结束。回复期间宠物只切换表情动画，不再在头顶显示工具名。每次宠物启动使用独立的会话存储（`DSH_SESSION_ROOT=<cwd>/.sessions/<pid>`），避免与上次启动的持久化日志冲突。
 
-**支持多模态图像输出**：当模型回复里带图（`assistant/message` / `assistant/chunk` 的 `image` 内容块，或文本里的 `![alt](src)` / `<img src="…">`），聊天区会把图片渲染出来，并把内联的 image 引用从文字里去掉，避免显示一长串 base64。`prompt()` 现在返回 `{ response, images }`，`images` 是可直接显示的 `data:`/`blob:`/`https:` 图片源列表；点击图片可在系统默认浏览器中打开原图。
+**支持多模态图像**：
+- **输出**：模型回复里带图（`assistant/message` / `assistant/chunk` 的 `image` 内容块，或文本里的 `![alt](src)` / `<img src="…">`），聊天区会把图片渲染出来，并把内联的 image 引用从文字里去掉，避免显示一长串 base64。`prompt()` 现在返回 `{ response, images }`，`images` 是可直接显示的 `data:`/`blob:`/`https:` 图片源列表；点击图片可在系统默认浏览器中打开原图。
+- **输入**：聊天输入框旁新增 📎 按钮，支持选择文件、Ctrl+V 粘贴图片、或把图片拖进聊天面板。发送时桌宠会把图片存到会话工作区的 `pet-uploads/`，并在提示词里告诉模型图片的文件路径，让模型用自己的文件工具打开查看。这条路的取舍是：SDK 的 `session/prompt` 只能发文本（模型侧只认已注册的持久化附件，这条线没有上传入口），所以用「落盘 + 路径提示词」的方式复用 DSH 的多模态读图能力，且不改动 DSH 源码。
 
 无 runtime 时窗口照常打开；runtime 在第一条消息时才懒启动，握手失败会显示为宠物的 `error` 表情。
 

@@ -14,6 +14,8 @@ import { DesktopPetBridge } from '../core/bridge.ts'
 import { definePlugin, EVENTS, SERVICES, type PetLogger, type PetService, type PetTodoService } from '../core/plugin.ts'
 import { boolean, object, string, type Schema } from '../core/schema.ts'
 import type { PetHarness } from '../types.ts'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 /** Options for the `bridge` plugin. */
 export interface BridgePluginOptions {
@@ -179,6 +181,38 @@ function approvalPayload(event: unknown): { id: unknown; toolName: unknown } | n
   return { id: data['id'], toolName: data['toolName'] }
 }
 
+/** Decode one canonical image data URL into bytes and a normalized file extension. */
+function decodeDataUrl(dataUrl: string): { bytes: Buffer; ext: string } {
+  const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(dataUrl)
+  if (match === null) throw new Error('malformed image data URL')
+  const mediaType = match[1] ?? 'image/png'
+  const base = mediaType.split('/').pop() ?? 'png'
+  const ext = base === 'jpeg' ? 'jpg' : base
+  const payload = match[3] ?? ''
+  if (match[2] === ';base64') return { bytes: Buffer.from(payload, 'base64'), ext }
+  // Non-base64 data URL: URL-encoded text; treat as UTF-8 bytes.
+  return { bytes: Buffer.from(decodeURIComponent(payload), 'utf8'), ext }
+}
+
+/**
+ * Persist one user image into the session workspace so the model's file tool
+ * can read it. Returns the absolute path written, or null when the image could
+ * not be decoded or written (logged; the prompt still goes out).
+ */
+async function savePetImage(workspace: string, dataUrl: string, index: number, logger: PetLogger): Promise<string | null> {
+  try {
+    const { bytes, ext } = decodeDataUrl(dataUrl)
+    const dir = join(workspace, 'pet-uploads')
+    await mkdir(dir, { recursive: true })
+    const filePath = join(dir, `img-${Date.now()}-${index}.${ext}`)
+    await writeFile(filePath, bytes)
+    return filePath
+  } catch (error) {
+    logger.warn('could not persist pet image: %s', error instanceof Error ? error.message : String(error))
+    return null
+  }
+}
+
 /**
  * The `bridge` plugin. Requires the `runtime` plugin (for the `harness`
  * service). Teardown closes the bridge, which settles the queued prompt and
@@ -236,7 +270,7 @@ export const bridgePlugin = definePlugin<BridgePluginOptions>({
     }
 
     const service: PetService = {
-      prompt: async (text) => {
+      prompt: async (text, images) => {
         const memory = ctx.get<import('../core/plugin.ts').PetMemoryService>(SERVICES.memory)
         const todo = ctx.get<PetTodoService>(SERVICES.todo)
         const trimmed = text.trim()
@@ -377,6 +411,24 @@ export const bridgePlugin = definePlugin<BridgePluginOptions>({
         // Same for a bulk list: the pet confirms the recorded count.
         if (bulkTodoItems !== null && bulkTodoItems.length > 0) {
           input = `${input}\n\n[系统提示：已把以下 ${bulkTodoItems.length} 条加入主人的待办清单：${bulkTodoItems.map(item => `「${item}」`).join('、')}。请用一两句话简短确认，不要复述整条清单。]`
+        }
+
+        // --- User-supplied images: persist each into the session workspace and
+        // tell the model where they are, so its own file tool can read them.
+        // The pet never sends raw image bytes over the SDK wire (the model layer
+        // only accepts pre-registered durable attachments, which this transport
+        // cannot create); referencing a file the model can open is the plugin
+        // path that leaves DSH source untouched.
+        if (images !== undefined && images.length > 0) {
+          const workspace = ctx.get<string>(SERVICES.workspace) ?? process.cwd()
+          const saved: string[] = []
+          for (let index = 0; index < images.length; index++) {
+            const path = await savePetImage(workspace, images[index]!.dataUrl, index, ctx.logger)
+            if (path !== null) saved.push(path)
+          }
+          if (saved.length > 0) {
+            input = `[系统提示：主人发来 ${saved.length} 张图片，已保存为文件，请用文件获取/查看类工具逐一打开以查看图片内容：\n${saved.map(p => `- ${p}`).join('\n')}\n]\n\n${input}`
+          }
         }
 
         // --- Real-time clock: stamp every user turn with the current local

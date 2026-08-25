@@ -153,6 +153,7 @@ export const runtimePlugin = definePlugin<RuntimePluginOptions>({
       ...options.model !== undefined && { model: options.model },
     })
     ctx.provide('harness', harness)
+    ctx.provide('workspace', options.cwd ?? process.cwd())
     ctx.logger.info(
       'runtime resolved: %s %s (cwd=%s, provider=%s, model=%s%s)',
       options.command ?? 'dsh-jsonrpc-agent',

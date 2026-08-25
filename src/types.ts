@@ -33,6 +33,17 @@ export interface PetReply {
   images: string[]
 }
 
+/**
+ * One user-supplied image sent with a chat prompt. The pet persists it (as a
+ * file in the session workspace) and references the path in the prompt so the
+ * model's own file tool can read it. The renderer always sends a canonical
+ * `data:` URL after reading the attached file/paste.
+ */
+export interface PetImageInput {
+  /** Canonical `data:<media-type>;base64,...` URL carrying the image bytes. */
+  dataUrl: string
+}
+
 /** The session-handle surface {@link DesktopPetBridge} consumes. */
 export interface PetHarnessSession {
   /** Stable wire session id. */

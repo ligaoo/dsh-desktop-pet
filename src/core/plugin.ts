@@ -157,9 +157,10 @@ export const EVENTS = {
 export interface PetService {
   /**
    * Queue one prompt; resolves with the final assistant text and any images
-   * it produced.
+   * it produced. Optional `images` are user-supplied pictures persisted into
+   * the session workspace and referenced by path in the prompt.
    */
-  prompt(text: string): Promise<PetReplyValue>
+  prompt(text: string, images?: PetImageInput[]): Promise<PetReplyValue>
   /** The current {@link PetSnapshot}. */
   readonly snapshot: PetSnapshotValue
   /** Subscribe to snapshot changes; returns the disposer. */
@@ -168,6 +169,9 @@ export interface PetService {
 
 /** Structural reply value (re-exported for convenience). */
 export type PetReplyValue = import('../types.ts').PetReply
+
+/** Structural image-input value (re-exported for convenience). */
+export type PetImageInput = import('../types.ts').PetImageInput
 
 /** Service keys published by the built-in plugins. */
 export const SERVICES = {
@@ -185,6 +189,8 @@ export const SERVICES = {
   memory: 'memory',
   /** The pet's todo list ({@link PetTodoService}) — published by the `todo` plugin. */
   todo: 'todo',
+  /** The session workspace cwd the pet's model operates in — published by the `runtime` plugin. */
+  workspace: 'workspace',
 } as const
 
 /** The window surface the `window` plugin publishes (for focus-aware plugins). */

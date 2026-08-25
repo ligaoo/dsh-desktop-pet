@@ -87,6 +87,18 @@ function resolveAsset(path: string): string {
   return candidate
 }
 
+/** Validate the renderer-supplied image list into `PetImageInput[]`, or undefined when absent/empty. */
+function parseImageInputs(value: unknown): import('../types.ts').PetImageInput[] | undefined {
+  if (value === undefined || value === null || !Array.isArray(value)) return undefined
+  const result: import('../types.ts').PetImageInput[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const dataUrl = (entry as { dataUrl?: unknown }).dataUrl
+    if (typeof dataUrl === 'string' && dataUrl !== '') result.push({ dataUrl })
+  }
+  return result.length > 0 ? result : undefined
+}
+
 /**
  * The `window` plugin. Requires the `bridge` plugin (for the `pet` service).
  * The runtime subprocess starts lazily on the first prompt so the window
@@ -188,9 +200,9 @@ export const windowPlugin = definePlugin<WindowPluginOptions>({
       summon()
       window.webContents.send('desktop-pet:approval', payload)
     })
-    const handlePrompt = (_event: unknown, text: unknown): Promise<import('../types.ts').PetReply> => {
+    const handlePrompt = (_event: unknown, text: unknown, images: unknown): Promise<import('../types.ts').PetReply> => {
       if (typeof text !== 'string') return Promise.reject(new Error('desktop-pet:prompt expects the prompt text as a string'))
-      return pet.prompt(text)
+      return pet.prompt(text, parseImageInputs(images))
     }
     ipcMain.handle('desktop-pet:prompt', handlePrompt)
     // Drag: the renderer sends ABSOLUTE target positions, so there is no

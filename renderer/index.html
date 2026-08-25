@@ -46,10 +46,13 @@
         </form>
       </div>
       <div id="log" class="log"></div>
+      <div id="attachments" class="attachments hidden"></div>
       <form id="form" class="form">
+        <button id="attach" class="attach" type="button" title="选择/粘贴图片">📎</button>
         <input id="input" placeholder="和桌宠聊天…" autocomplete="off">
         <button id="send" type="submit">发送</button>
       </form>
+      <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
     </div>
     <script type="module" src="./pet.js"></script>
   </body>
