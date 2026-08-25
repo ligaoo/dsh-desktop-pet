@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - System tray + global hotkey for summoning the pet.
 - Image skins (`pet.png` / per-mood images) with zero-config auto-detection.
 - Auto-injected harness credentials from `~/.dsh/.credentials.yaml`.
+- Multimodal image output: the chat log renders assistant images. `prompt()` now resolves a `{ response, images }` reply; image sources are extracted from `assistant/message` / `assistant/chunk` (`block-end`) `image` content blocks and, as a fallback, from `![alt](src)` / `<img src="…">` in the reply text (which are then stripped from the displayed text). The renderer CSP now allows `data:`/`blob:`/`https:` images.
 
 ### Changed
 - Extracted from `deepseek-harness/packages/extensions/desktop-pet` into a standalone project with vendored SDK artifacts.

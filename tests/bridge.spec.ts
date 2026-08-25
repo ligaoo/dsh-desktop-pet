@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { HarnessNotification, RunResult } from '../src/sdk.ts'
-import { DesktopPetBridge } from '../src/core/bridge.ts'
+import { collectImageSources, DesktopPetBridge, imageSourceOf } from '../src/core/bridge.ts'
 import { INITIAL_SNAPSHOT } from '../src/core/state.ts'
-import type { PetHarness, PetHarnessSession, PetSnapshot } from '../src/types.ts'
+import type { PetHarness, PetHarnessSession, PetReply, PetSnapshot } from '../src/types.ts'
 
 type Observer = ((notification: HarnessNotification) => void) | undefined
 type RunHandler = (input: string, onNotification: Observer) => Promise<RunResult>
@@ -79,7 +79,7 @@ describe('DesktopPetBridge', () => {
 
     const seen: PetSnapshot[] = []
     bridge.listen(snapshot => seen.push(snapshot))
-    await expect(bridge.prompt('hi')).resolves.toBe('done')
+    await expect(bridge.prompt('hi')).resolves.toEqual({ response: 'done', images: [] })
 
     expect(seen.map(snapshot => snapshot.mood)).toEqual(['thinking', 'acting', 'speaking', 'idle'])
     expect(bridge.snapshot).toEqual({ mood: 'idle', speech: 'done', detail: null })
@@ -110,7 +110,7 @@ describe('DesktopPetBridge', () => {
     })
     const bridge = new DesktopPetBridge(harness)
     const [first, second] = await Promise.all([bridge.prompt('one'), bridge.prompt('two')])
-    expect([first, second]).toEqual(['one', 'two'])
+    expect([first, second]).toEqual([{ response: 'one', images: [] }, { response: 'two', images: [] }])
     expect(order).toEqual(['start:one', 'end:one', 'start:two', 'end:two'])
   })
 
@@ -132,7 +132,7 @@ describe('DesktopPetBridge', () => {
     expect(bridge.snapshot).toEqual({ mood: 'error', speech: null, detail: 'boom' })
 
     fail = false
-    await expect(bridge.prompt('again')).resolves.toBe('ok')
+    await expect(bridge.prompt('again')).resolves.toEqual({ response: 'ok', images: [] })
     expect(harness.calls).toEqual(['go', 'again'])
   })
 
@@ -185,7 +185,7 @@ describe('DesktopPetBridge', () => {
     const bridge = new DesktopPetBridge(harness)
     const seen: Array<{ mood: string; speech: string | null }> = []
     bridge.listen(snapshot => seen.push({ mood: snapshot.mood, speech: snapshot.speech }))
-    await expect(bridge.prompt('hi')).resolves.toBe('你好啊')
+    await expect(bridge.prompt('hi')).resolves.toEqual({ response: '你好啊', images: [] })
     expect(seen).toEqual([
       { mood: 'thinking', speech: null },
       { mood: 'speaking', speech: '你' },
@@ -223,5 +223,87 @@ describe('DesktopPetBridge', () => {
     await bridge.prompt('hi')
     // status running, tool/call, assistant/message, status idle
     expect(seen).toEqual(['session.status', 'session.event', 'session.event', 'session.status'])
+  })
+})
+
+describe('imageSourceOf', () => {
+  it('reads imageUrl / url / src from an image content block', () => {
+    expect(imageSourceOf({ type: 'image', imageUrl: 'https://x/y.png' })).toBe('https://x/y.png')
+    expect(imageSourceOf({ type: 'image', url: 'data:image/png;base64,AAAA' })).toBe('data:image/png;base64,AAAA')
+    expect(imageSourceOf({ type: 'image', src: '/workspace/out.png' })).toBe('/workspace/out.png')
+  })
+
+  it('reads a string image field and nested image url/data', () => {
+    expect(imageSourceOf({ type: 'image', image: 'data:image/jpeg;base64,BBBB' })).toBe('data:image/jpeg;base64,BBBB')
+    expect(imageSourceOf({ type: 'image', image: { url: 'https://x/z.webp' } })).toBe('https://x/z.webp')
+    expect(imageSourceOf({ type: 'image', alt: 'a picture' })).toBeNull()
+  })
+
+  it('wraps raw base64 data with its mediaType, and passes through a data URL', () => {
+    expect(imageSourceOf({ type: 'image', mediaType: 'image/webp', data: 'CCCC' })).toBe('data:image/webp;base64,CCCC')
+    expect(imageSourceOf({ type: 'image', mediaType: 'image/webp', data: 'data:image/png;base64,DDDD' })).toBe('data:image/png;base64,DDDD')
+  })
+
+  it('returns null for non-image or attachment-only blocks', () => {
+    expect(imageSourceOf({ type: 'text', text: 'hi' })).toBeNull()
+    expect(imageSourceOf({ type: 'image', attachment: { attachmentId: 'sha256:abc', mediaType: 'image/png', bytes: 4 } })).toBeNull()
+    expect(imageSourceOf(undefined)).toBeNull()
+  })
+})
+
+describe('collectImageSources', () => {
+  it('collects image blocks from assistant messages and chunk block-ends, deduplicated', () => {
+    const events = [
+      { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'ok' }, { type: 'image', imageUrl: 'https://x/a.png' }, { type: 'image', imageUrl: 'https://x/a.png' }] } } },
+      { type: 'assistant/chunk', data: { chunk: { type: 'block-end', block: { type: 'image', imageUrl: 'https://x/b.png' } } } },
+    ]
+    const result: RunResult = { sessionId: 'desktop-pet', finalResponse: 'ok', events, notifications: [] }
+    expect(collectImageSources(result)).toEqual(['https://x/a.png', 'https://x/b.png'])
+  })
+
+  it('extracts markdown and HTML image sources from the reply text', () => {
+    const result: RunResult = {
+      sessionId: 'desktop-pet',
+      finalResponse: '看这个 ![result](https://x/c.png) 和 <img src="https://x/d.png" alt="d">',
+      events: [],
+      notifications: [],
+    }
+    expect(collectImageSources(result)).toEqual(['https://x/c.png', 'https://x/d.png'])
+  })
+
+  it('skips attachment-only image blocks', () => {
+    const events = [
+      { type: 'assistant/message', data: { message: { content: [{ type: 'image', attachment: { attachmentId: 'sha256:abc', mediaType: 'image/png', bytes: 4 } }] } } },
+    ]
+    const result: RunResult = { sessionId: 'desktop-pet', finalResponse: '', events, notifications: [] }
+    expect(collectImageSources(result)).toEqual([])
+  })
+
+  it('returns no images for a plain text run', () => {
+    const result: RunResult = { sessionId: 'desktop-pet', finalResponse: '你好', events: [], notifications: [] }
+    expect(collectImageSources(result)).toEqual([])
+  })
+})
+
+describe('DesktopPetBridge images', () => {
+  it('resolves with the reply text and images from the run result', async () => {
+    const harness = new FakeHarness((_input, onNotification) => {
+      onNotification?.({ method: 'session.event', params: { sessionId: 'desktop-pet', event: { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '图来了' }, { type: 'image', imageUrl: 'https://x/out.png' }] } } } } })
+      return Promise.resolve<RunResult>({ sessionId: 'desktop-pet', finalResponse: '图来了', events: [{ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '图来了' }, { type: 'image', imageUrl: 'https://x/out.png' }] } } }], notifications: [] })
+    })
+    const bridge = new DesktopPetBridge(harness)
+    const reply: PetReply = await bridge.prompt('画个图')
+    expect(reply).toEqual({ response: '图来了', images: ['https://x/out.png'] })
+  })
+
+  it('strips markdown image references from the displayed text', async () => {
+    const harness = new FakeHarness((_input, onNotification) => {
+      onNotification?.({ method: 'session.event', params: { sessionId: 'desktop-pet', event: { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '看 ![x](https://x/a.png) 这张' }] } } } } })
+      return Promise.resolve<RunResult>({ sessionId: 'desktop-pet', finalResponse: '看 ![x](https://x/a.png) 这张', events: [], notifications: [] })
+    })
+    const bridge = new DesktopPetBridge(harness)
+    const reply: PetReply = await bridge.prompt('画个图')
+    expect(reply.response).toBe('看 这张')
+    expect(reply.images).toEqual(['https://x/a.png'])
   })
 })

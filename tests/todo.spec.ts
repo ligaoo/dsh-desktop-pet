@@ -235,7 +235,7 @@ describe('todo chat commands (bridge)', () => {
       const pet = host.get<import('../src/core/plugin.ts').PetService>(SERVICES.pet)!
 
       const reply = await pet.prompt('查看待办')
-      expect(reply).toContain('买牛奶')
+      expect(reply.response).toContain('买牛奶')
       const lastCall = fake.calls[fake.calls.length - 1]!
       expect(lastCall).toContain('买牛奶')
       expect(lastCall).toContain('主人目前的待办清单')

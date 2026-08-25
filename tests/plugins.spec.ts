@@ -67,7 +67,7 @@ describe('built-in plugin wiring', () => {
     await host.start()
 
     const pet = host.get<import('../src/core/plugin.ts').PetService>(SERVICES.pet)!
-    await expect(pet.prompt('hi')).resolves.toBe('hello there')
+    await expect(pet.prompt('hi')).resolves.toEqual({ response: 'hello there', images: [] })
     expect(fake.calls[0]).toMatch(/^\[系统提示：当前时间 .+\]\n\nhi$/)
     expect(snapshots.map(snapshot => snapshot.mood)).toEqual(['thinking', 'acting', 'speaking', 'idle'])
 
@@ -141,7 +141,7 @@ describe('built-in plugin wiring', () => {
     const pet = host.get<import('../src/core/plugin.ts').PetService>(SERVICES.pet)!
     await pet.prompt('hi')
     expect(approvals).toEqual([{ id: 'a1', toolName: 'bash' }])
-    expect(done).toEqual([{ reply: 'done' }])
+    expect(done).toEqual([{ reply: 'done', images: [] }])
     await host.dispose()
   })
 

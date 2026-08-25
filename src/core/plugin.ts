@@ -139,7 +139,7 @@ export const EVENTS = {
   pluginDisposed: 'plugin:disposed',
   /** Emitted when a plugin's `setup` throws. */
   pluginError: 'plugin:error',
-  /** Emitted when a chat prompt settles with a final reply (bridge plugin). */
+  /** Emitted when a chat prompt settles with a final reply: `{ reply, images }`. */
   turnDone: 'turn:done',
   /** Emitted when the runtime asks for approval (`approval/asked` session event). */
   approvalAsked: 'approval:asked',
@@ -152,6 +152,22 @@ export const EVENTS = {
   /** Emitted with the full todo list after any todo mutation (todo plugin). */
   todoChanged: 'todo:changed',
 } as const
+
+/** The chat surface exposed by the `bridge` plugin. */
+export interface PetService {
+  /**
+   * Queue one prompt; resolves with the final assistant text and any images
+   * it produced.
+   */
+  prompt(text: string): Promise<PetReplyValue>
+  /** The current {@link PetSnapshot}. */
+  readonly snapshot: PetSnapshotValue
+  /** Subscribe to snapshot changes; returns the disposer. */
+  listen(listener: (snapshot: PetSnapshotValue) => void): () => void
+}
+
+/** Structural reply value (re-exported for convenience). */
+export type PetReplyValue = import('../types.ts').PetReply
 
 /** Service keys published by the built-in plugins. */
 export const SERVICES = {
@@ -254,16 +270,6 @@ export interface PetTodoService {
   listText(): string
   /** Subscribe to list changes; the listener receives the full list. Returns the disposer. */
   listen(listener: (items: TodoItem[]) => void): () => void
-}
-
-/** The chat surface exposed by the `bridge` plugin. */
-export interface PetService {
-  /** Queue one prompt; resolves with the final assistant text. */
-  prompt(text: string): Promise<string>
-  /** The current {@link PetSnapshot}. */
-  readonly snapshot: PetSnapshotValue
-  /** Subscribe to snapshot changes; returns the disposer. */
-  listen(listener: (snapshot: PetSnapshotValue) => void): () => void
 }
 
 /** Structural snapshot value (re-exported for convenience). */

@@ -52,6 +52,8 @@ DEEPSEEK_API_KEY=… npm run pet        # 等价：node lib/entries/cli.js
 
 **回复是流式的**：`assistant/chunk` 的 `text-delta` 片段会被实时累积进气泡（`core/bridge.ts`），逐字显示，而不是等整轮结束。回复期间宠物只切换表情动画，不再在头顶显示工具名。每次宠物启动使用独立的会话存储（`DSH_SESSION_ROOT=<cwd>/.sessions/<pid>`），避免与上次启动的持久化日志冲突。
 
+**支持多模态图像输出**：当模型回复里带图（`assistant/message` / `assistant/chunk` 的 `image` 内容块，或文本里的 `![alt](src)` / `<img src="…">`），聊天区会把图片渲染出来，并把内联的 image 引用从文字里去掉，避免显示一长串 base64。`prompt()` 现在返回 `{ response, images }`，`images` 是可直接显示的 `data:`/`blob:`/`https:` 图片源列表；点击图片可在系统默认浏览器中打开原图。
+
 无 runtime 时窗口照常打开；runtime 在第一条消息时才懒启动，握手失败会显示为宠物的 `error` 表情。
 
 ### 给宠物命名

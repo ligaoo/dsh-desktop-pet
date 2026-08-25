@@ -134,8 +134,9 @@ async function runHeadlessPrompt(config: PetConfig, configFilePath: string | und
       })
   try {
     const reply = await pet.prompt(prompt)
-    if (json) console.log(JSON.stringify({ event: 'reply', text: reply }))
-    else console.log(reply === '' ? '（这一轮没有文本回复）' : reply)
+    const text = reply.response
+    if (json) console.log(JSON.stringify({ event: 'reply', text, images: reply.images }))
+    else console.log(text === '' ? '（这一轮没有文本回复）' : text)
   } finally {
     disposeLog()
     await host.dispose()

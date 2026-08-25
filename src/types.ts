@@ -20,6 +20,19 @@ export interface PetSnapshot {
   detail: string | null
 }
 
+/**
+ * The outcome of one chat prompt: the assistant's final text plus any images
+ * it produced. Images are renderable sources (a `data:`/`blob:`/`http(s):`
+ * URL, or inline base64) extracted from assistant content blocks and, as a
+ * fallback, from `![alt](src)` markdown in the reply text.
+ */
+export interface PetReply {
+  /** Concatenated assistant text for the turn (may be '' when the model only produced images). */
+  response: string
+  /** Renderable image sources produced this turn, in first-seen order, deduplicated. */
+  images: string[]
+}
+
 /** The session-handle surface {@link DesktopPetBridge} consumes. */
 export interface PetHarnessSession {
   /** Stable wire session id. */

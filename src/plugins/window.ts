@@ -188,7 +188,7 @@ export const windowPlugin = definePlugin<WindowPluginOptions>({
       summon()
       window.webContents.send('desktop-pet:approval', payload)
     })
-    const handlePrompt = (_event: unknown, text: unknown): Promise<string> => {
+    const handlePrompt = (_event: unknown, text: unknown): Promise<import('../types.ts').PetReply> => {
       if (typeof text !== 'string') return Promise.reject(new Error('desktop-pet:prompt expects the prompt text as a string'))
       return pet.prompt(text)
     }

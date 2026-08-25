@@ -388,10 +388,10 @@ export const bridgePlugin = definePlugin<BridgePluginOptions>({
 
         const reply = await bridge.prompt(input)
         if (memory !== undefined) {
-          memory.recordTurn(text, reply)
+          memory.recordTurn(text, reply.response)
           void maybeConsolidate()
         }
-        if (reply !== '') ctx.emit(EVENTS.turnDone, { reply })
+        if (reply.response !== '') ctx.emit(EVENTS.turnDone, { reply: reply.response, images: reply.images })
         return reply
       },
       get snapshot() {

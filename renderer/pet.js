@@ -371,6 +371,39 @@ function appendMessage(role, text) {
   log.scrollTop = log.scrollHeight
 }
 
+/** Append one assistant image (renderable source) to the chat log. */
+function appendImage(source) {
+  const row = document.createElement('div')
+  row.className = 'msg assistant'
+  const img = document.createElement('img')
+  img.className = 'chat-img'
+  img.src = source
+  img.alt = '生成的图片'
+  img.addEventListener('click', () => {
+    // Open the full image in the OS default viewer / browser.
+    window.open(source, '_blank')
+  })
+  row.append(img)
+  log.append(row)
+  log.scrollTop = log.scrollHeight
+}
+
+/**
+ * Render one assistant reply: its text plus any images the model produced.
+ * `reply` is the `PetReply` object the main process resolves — a plain string
+ * is tolerated for backward compatibility with older IPC payloads.
+ */
+function appendAssistant(reply) {
+  const isObject = reply !== null && typeof reply === 'object'
+  const response = isObject ? (reply.response ?? '') : (reply ?? '')
+  const images = isObject && Array.isArray(reply.images) ? reply.images : []
+  if (response !== '') appendMessage('assistant', response)
+  for (const source of images) {
+    if (typeof source === 'string' && source !== '') appendImage(source)
+  }
+  if (response === '' && images.length === 0) appendMessage('assistant', '（这一轮没有文本回复）')
+}
+
 /** Unwrap Electron's invoke-error prefix so the raw bridge message shows. */
 function cleanError(error) {
   const message = error instanceof Error ? error.message : String(error)
@@ -387,7 +420,7 @@ form.addEventListener('submit', (event) => {
   input.disabled = true
   sendButton.disabled = true
   window.desktopPet.prompt(text)
-    .then((reply) => appendMessage('assistant', reply === '' ? '（这一轮没有文本回复）' : reply))
+    .then((reply) => appendAssistant(reply))
     .catch((error) => appendMessage('error', cleanError(error)))
     .finally(() => {
       input.disabled = false
